@@ -21,11 +21,20 @@ class InventoryBatchViewSet(viewsets.ReadOnlyModelViewSet):
     Main endpoint for the app's catalog. 
     Shows available batches of products from different farmers.
     """
-    queryset = InventoryBatch.objects.filter(stock_level__gt=0).select_related('product', 'farmer', 'farmer__user', 'product__category')
+    queryset = InventoryBatch.objects.filter(stock_level__gt=0).select_related(
+        'variant__product', 'variant__product__category', 'farmer', 'farmer__user'
+    )
     serializer_class = InventoryBatchSerializer
     filter_backends = [DjangoFilterBackend, filters.SearchFilter]
-    filterset_fields = ['product__category__slug', 'product__category', 'product__subcategory', 'is_organic', 'is_farm_fresh', 'farmer']
-    search_fields = ['product__name', 'farmer__user__username']
+    filterset_fields = [
+        'variant__product__category__slug', 
+        'variant__product__category', 
+        'variant__product__subcategory', 
+        'is_organic', 
+        'is_farm_fresh', 
+        'farmer'
+    ]
+    search_fields = ['variant__product__name', 'farmer__user__username']
 
 class FarmerViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = FarmerProfile.objects.all().select_related('user')
