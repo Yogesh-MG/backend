@@ -30,3 +30,46 @@ class FarmerProfile(models.Model):
 
     def __str__(self):
         return f"Farmer: {self.user.get_full_name() or self.user.username}"
+
+
+class UserAddress(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="addresses")
+    name = models.CharField(max_length=120, blank=True)
+    phone = models.CharField(max_length=20, blank=True)
+    line1 = models.CharField(max_length=255, blank=True)
+    area = models.CharField(max_length=120, blank=True)
+    landmark = models.CharField(max_length=255, blank=True)
+    is_default = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-is_default", "-updated_at"]
+
+    def __str__(self):
+        return f"{self.user.username} - {self.area or 'Address'}"
+
+
+class CustomerPreferences(models.Model):
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name="preferences")
+    organic_only = models.BooleanField(default=False)
+    vegetarian = models.BooleanField(default=True)
+    avoid_plastic = models.BooleanField(default=True)
+    allergens = models.CharField(max_length=255, blank=True)
+    notes = models.TextField(blank=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"Preferences for {self.user.username}"
+
+
+class CustomerSettings(models.Model):
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name="customer_settings")
+    order_updates = models.BooleanField(default=True)
+    offers = models.BooleanField(default=False)
+    weekly_summary = models.BooleanField(default=True)
+    private_profile = models.BooleanField(default=False)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"Settings for {self.user.username}"

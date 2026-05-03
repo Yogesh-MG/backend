@@ -9,7 +9,8 @@ from django.contrib.auth import authenticate
 from django.conf import settings
 from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import csrf_exempt
-from .models import User
+from .models import CustomerPreferences, CustomerSettings, User, UserAddress
+from .serializers import CustomerPreferencesSerializer, CustomerSettingsSerializer, UserAddressSerializer
 
 
 def _set_auth_cookies(response, access_token: str, refresh_token: str):
@@ -205,3 +206,61 @@ class CurrentUserView(APIView):
             'role': user.role,
             'is_verified': user.is_verified,
         })
+
+
+class CustomerProfileDataView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get_profile_parts(self, user):
+        address = user.addresses.filter(is_default=True).first() or user.addresses.first()
+        preferences, _ = CustomerPreferences.objects.get_or_create(user=user)
+        customer_settings, _ = CustomerSettings.objects.get_or_create(user=user)
+        return address, preferences, customer_settings
+
+    def get(self, request):
+        address, preferences, customer_settings = self.get_profile_parts(request.user)
+        return Response({
+            "address": UserAddressSerializer(address).data if address else {
+                "name": "",
+                "phone": "",
+                "line1": "",
+                "area": "",
+                "landmark": "",
+            },
+            "preferences": CustomerPreferencesSerializer(preferences).data,
+            "settings": CustomerSettingsSerializer(customer_settings).data,
+        })
+
+    def patch(self, request):
+        user = request.user
+        response_data = {}
+
+        if "address" in request.data:
+            address = user.addresses.filter(is_default=True).first()
+            if not address:
+                address = UserAddress(user=user, is_default=True)
+
+            serializer = UserAddressSerializer(address, data=request.data["address"], partial=True)
+            serializer.is_valid(raise_exception=True)
+            user.addresses.exclude(pk=address.pk).update(is_default=False)
+            serializer.save(user=user, is_default=True)
+            response_data["address"] = serializer.data
+
+        if "preferences" in request.data:
+            preferences, _ = CustomerPreferences.objects.get_or_create(user=user)
+            serializer = CustomerPreferencesSerializer(preferences, data=request.data["preferences"], partial=True)
+            serializer.is_valid(raise_exception=True)
+            serializer.save(user=user)
+            response_data["preferences"] = serializer.data
+
+        if "settings" in request.data:
+            customer_settings, _ = CustomerSettings.objects.get_or_create(user=user)
+            serializer = CustomerSettingsSerializer(customer_settings, data=request.data["settings"], partial=True)
+            serializer.is_valid(raise_exception=True)
+            serializer.save(user=user)
+            response_data["settings"] = serializer.data
+
+        if not response_data:
+            return Response({"detail": "Send address, preferences, or settings to update."}, status=status.HTTP_400_BAD_REQUEST)
+
+        return Response(response_data)
