@@ -69,24 +69,17 @@ class RazorpayVerifyView(APIView):
             )
         
         try:
-            # Verify signature
-            message = f'{razorpay_order_id}|{razorpay_payment_id}'
-            expected_signature = hmac.new(
-                settings.RAZORPAY_KEY_SECRET.encode(),
-                message.encode(),
-                hashlib.sha256
-            ).hexdigest()
-            
-            if expected_signature != razorpay_signature:
-                return Response(
-                    {'error': 'Invalid signature', 'success': False},
-                    status=status.HTTP_400_BAD_REQUEST
-                )
+            # Verify signature using Razorpay SDK utility
+            client.utility.verify_payment_signature({
+                'razorpay_order_id': razorpay_order_id,
+                'razorpay_payment_id': razorpay_payment_id,
+                'razorpay_signature': razorpay_signature
+            })
             
             # Fetch payment details from Razorpay
             payment = client.payment.fetch(razorpay_payment_id)
             
-            if payment['status'] == 'captured':
+            if payment['status'] in ['captured', 'authorized']:
                 return Response({
                     'success': True,
                     'message': 'Payment verified successfully',
@@ -98,6 +91,11 @@ class RazorpayVerifyView(APIView):
                     {'error': f'Payment status: {payment["status"]}', 'success': False},
                     status=status.HTTP_400_BAD_REQUEST
                 )
+        except razorpay.errors.SignatureVerificationError:
+            return Response(
+                {'error': 'Invalid payment signature', 'success': False},
+                status=status.HTTP_400_BAD_REQUEST
+            )
         except Exception as e:
             return Response(
                 {'error': f'Payment verification failed: {str(e)}', 'success': False},
