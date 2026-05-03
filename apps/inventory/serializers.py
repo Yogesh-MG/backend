@@ -1,6 +1,6 @@
 from rest_framework import serializers
-from apps.accounts.models import FarmerProfile, User, ProductVariant
-from .models import Category, SubCategory, Product, InventoryBatch, ProductBenefit
+from apps.accounts.models import FarmerProfile, User
+from .models import Category, SubCategory, Product, InventoryBatch, ProductBenefit, ProductVariant
 
 class FarmerSerializer(serializers.ModelSerializer):
     name = serializers.CharField(source='user.get_full_name')
