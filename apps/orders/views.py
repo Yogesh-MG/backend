@@ -1,14 +1,25 @@
 from rest_framework import viewsets, permissions, status
 from rest_framework.response import Response
+from rest_framework.pagination import PageNumberPagination
 from .models import Order
 from .serializers import OrderCreateSerializer, OrderDetailSerializer
 
+
+class OrderPagination(PageNumberPagination):
+    page_size = 15
+    page_size_query_param = 'page_size'
+    max_page_size = 50
+
+
 class OrderViewSet(viewsets.ModelViewSet):
     permission_classes = [permissions.IsAuthenticated]
+    pagination_class = OrderPagination
 
     def get_queryset(self):
         # Users can only see their own orders
-        return Order.objects.filter(user=self.request.user).order_by('-created_at')
+        return Order.objects.filter(
+            user=self.request.user
+        ).prefetch_related('items').order_by('-created_at')
 
     def get_serializer_class(self):
         if self.action == 'create':

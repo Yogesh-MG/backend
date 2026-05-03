@@ -15,9 +15,27 @@ class SubCategorySerializer(serializers.ModelSerializer):
         model = SubCategory
         fields = ['id', 'slug', 'name', 'emoji']
 
-class CategorySerializer(serializers.ModelSerializer):
+class SubCategoryDetailSerializer(serializers.ModelSerializer):
+    """Includes parent category_id for breadcrumb / back-navigation."""
+    category_id = serializers.IntegerField(source='category.id', read_only=True)
+    category_name = serializers.CharField(source='category.name', read_only=True)
+
+    class Meta:
+        model = SubCategory
+        fields = ['id', 'slug', 'name', 'emoji', 'category_id', 'category_name']
+
+class CategoryListSerializer(serializers.ModelSerializer):
+    """Lightweight serializer for the list endpoint — no nested subcategories."""
+    subcategory_count = serializers.IntegerField(read_only=True)
+
+    class Meta:
+        model = Category
+        fields = ['id', 'slug', 'name', 'emoji', 'description', 'subcategory_count']
+
+class CategoryDetailSerializer(serializers.ModelSerializer):
+    """Full serializer for the detail / retrieve endpoint."""
     subcategories = SubCategorySerializer(many=True, read_only=True)
-    
+
     class Meta:
         model = Category
         fields = ['id', 'slug', 'name', 'emoji', 'description', 'subcategories']
