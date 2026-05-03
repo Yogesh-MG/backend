@@ -20,6 +20,11 @@ class OrderCreateSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         items_data = validated_data.pop('items')
+        # Remove incoming prices to avoid conflict with backend calculations
+        validated_data.pop('subtotal', None)
+        validated_data.pop('delivery_fee', None)
+        validated_data.pop('total', None)
+        
         user = self.context['request'].user
         delivery_slot_type = validated_data.get('delivery_slot', 'EXPRESS')
 
