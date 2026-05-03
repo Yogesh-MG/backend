@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import Product, Category, SubCategory, InventoryBatch, ProductBenefit
+from .models import Product, Category, SubCategory, InventoryBatch, ProductBenefit, ProductVariant
 
 # Register your models here.
 @admin.register(Category)
@@ -13,17 +13,32 @@ class SubCategoryAdmin(admin.ModelAdmin):
     list_filter = ('category',)
     prepopulated_fields = {'slug': ('name',)}
 
+class ProductVariantInline(admin.TabularInline):
+    model = ProductVariant
+    extra = 1
+
+class ProductBenefitInline(admin.TabularInline):
+    model = ProductBenefit
+    extra = 1
+
 @admin.register(Product)
 class ProductAdmin(admin.ModelAdmin):
-    list_display = ('name', 'category', 'subcategory', 'unit')
+    list_display = ('name', 'category', 'subcategory')
     list_filter = ('category', 'subcategory')
     search_fields = ('name',)
+    inlines = [ProductVariantInline, ProductBenefitInline]
+
+@admin.register(ProductVariant)
+class ProductVariantAdmin(admin.ModelAdmin):
+    list_display = ('product', 'unit', 'is_active')
+    list_filter = ('is_active', 'unit')
+    search_fields = ('product__name', 'unit')
 
 @admin.register(InventoryBatch)
 class InventoryBatchAdmin(admin.ModelAdmin):
-    list_display = ('product', 'farmer', 'stock_level', 'price', 'harvest_date')
+    list_display = ('variant', 'farmer', 'stock_level', 'price', 'harvest_date')
     list_filter = ('is_organic', 'is_farm_fresh', 'harvest_date')
-    search_fields = ('product__name', 'farmer__user__username')
+    search_fields = ('variant__product__name', 'farmer__user__username')
 
 @admin.register(ProductBenefit)
 class ProductBenefitAdmin(admin.ModelAdmin):
