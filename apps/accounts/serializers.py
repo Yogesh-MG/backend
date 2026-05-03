@@ -1,14 +1,5 @@
 from rest_framework import serializers
-
-from .models import CustomerPreferences, CustomerSettings, UserAddress
-
-
-class UserAddressSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = UserAddress
-        fields = ["id", "name", "phone", "line1", "area", "landmark", "is_default"]
-        read_only_fields = ["id", "is_default"]
-
+from .models import CustomerPreferences, CustomerSettings
 
 class CustomerPreferencesSerializer(serializers.ModelSerializer):
     organicOnly = serializers.BooleanField(source="organic_only", required=False)

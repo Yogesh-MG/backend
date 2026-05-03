@@ -1,6 +1,6 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin
-from .models import CustomerPreferences, CustomerSettings, FarmerProfile, User, UserAddress
+from .models import CustomerPreferences, CustomerSettings, FarmerProfile, User
 
 @admin.register(User)
 class CustomUserAdmin(UserAdmin):
@@ -15,13 +15,6 @@ class CustomUserAdmin(UserAdmin):
 @admin.register(FarmerProfile)
 class FarmerProfileAdmin(admin.ModelAdmin):
     list_display = ("user", "location", "rating", "speciality")
-
-
-@admin.register(UserAddress)
-class UserAddressAdmin(admin.ModelAdmin):
-    list_display = ("user", "name", "phone", "area", "is_default", "updated_at")
-    list_filter = ("is_default", "area")
-    search_fields = ("user__username", "name", "phone", "line1", "area")
 
 
 @admin.register(CustomerPreferences)

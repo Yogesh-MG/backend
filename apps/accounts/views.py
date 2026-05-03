@@ -9,8 +9,10 @@ from django.contrib.auth import authenticate
 from django.conf import settings
 from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import csrf_exempt
-from .models import CustomerPreferences, CustomerSettings, User, UserAddress
-from .serializers import CustomerPreferencesSerializer, CustomerSettingsSerializer, UserAddressSerializer
+from .models import CustomerPreferences, CustomerSettings, User
+from apps.delivery.models import DeliveryAddress
+from apps.delivery.serializers import DeliveryAddressSerializer
+from .serializers import CustomerPreferencesSerializer, CustomerSettingsSerializer
 
 
 def _set_auth_cookies(response, access_token: str, refresh_token: str):
@@ -212,7 +214,7 @@ class CustomerProfileDataView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get_profile_parts(self, user):
-        address = user.addresses.filter(is_default=True).first() or user.addresses.first()
+        address = user.delivery_addresses.filter(is_default=True).first() or user.delivery_addresses.first()
         preferences, _ = CustomerPreferences.objects.get_or_create(user=user)
         customer_settings, _ = CustomerSettings.objects.get_or_create(user=user)
         return address, preferences, customer_settings
@@ -220,12 +222,11 @@ class CustomerProfileDataView(APIView):
     def get(self, request):
         address, preferences, customer_settings = self.get_profile_parts(request.user)
         return Response({
-            "address": UserAddressSerializer(address).data if address else {
-                "name": "",
-                "phone": "",
-                "line1": "",
-                "area": "",
-                "landmark": "",
+            "address": DeliveryAddressSerializer(address).data if address else {
+                "title": "",
+                "address_line": "",
+                "address_type": "HOME",
+                "is_default": False,
             },
             "preferences": CustomerPreferencesSerializer(preferences).data,
             "settings": CustomerSettingsSerializer(customer_settings).data,
@@ -236,13 +237,13 @@ class CustomerProfileDataView(APIView):
         response_data = {}
 
         if "address" in request.data:
-            address = user.addresses.filter(is_default=True).first()
+            address = user.delivery_addresses.filter(is_default=True).first()
             if not address:
-                address = UserAddress(user=user, is_default=True)
+                address = DeliveryAddress(user=user, is_default=True)
 
-            serializer = UserAddressSerializer(address, data=request.data["address"], partial=True)
+            serializer = DeliveryAddressSerializer(address, data=request.data["address"], partial=True)
             serializer.is_valid(raise_exception=True)
-            user.addresses.exclude(pk=address.pk).update(is_default=False)
+            user.delivery_addresses.exclude(pk=address.pk).update(is_default=False)
             serializer.save(user=user, is_default=True)
             response_data["address"] = serializer.data
 
