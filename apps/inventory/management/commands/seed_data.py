@@ -85,10 +85,16 @@ class Command(BaseCommand):
                 defaults={
                     "category": categories[p['cat']],
                     "subcategory": subcategories[p['sub']] if 'sub' in p else None,
-                    "unit": p['unit'],
                     "description": p['desc'],
                     "storage_instructions": "Store in a cool, dry place."
                 }
+            )
+            
+            # Create variant
+            variant, _ = ProductVariant.objects.get_or_create(
+                product=prod,
+                unit=p['unit'],
+                defaults={"is_active": True}
             )
             
             # Add benefits
@@ -98,7 +104,7 @@ class Command(BaseCommand):
             # 4. Create Batches (Live Inventory)
             InventoryBatch.objects.get_or_create(
                 farmer=random.choice(farmer_profiles),
-                product=prod,
+                variant=variant,
                 defaults={
                     "price": random.randint(30, 200),
                     "mrp": random.randint(220, 260),
