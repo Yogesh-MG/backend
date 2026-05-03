@@ -21,35 +21,56 @@ class OrderCreateSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         items_data = validated_data.pop('items')
         user = self.context['request'].user
+        delivery_slot_type = validated_data.get('delivery_slot', 'EXPRESS')
 
         with transaction.atomic():
-            # 1. Create the Order
-            order = Order.objects.create(user=user, **validated_data)
+            # 1. Calculate Prices on Backend
+            subtotal = 0
+            order_items_to_create = []
 
-            # 2. Process Items and Stock
-            for item in items_data:
-                batch = item['batch']
-                qty = item['quantity']
+            for item_data in items_data:
+                batch = item_data['batch']
+                qty = item_data['quantity']
 
-                # Atomic Stock Check
+                # Stock Check
                 if batch.stock_level < qty:
-                    raise serializers.ValidationError(
-                        f"Only {batch.stock_level} units of {batch.product.name} are available."
-                    )
+                    raise serializers.ValidationError(f"Only {batch.stock_level} units of {batch.variant.product.name} are available.")
 
-                # Deduct Stock
+                item_price = batch.price
+                subtotal += item_price * qty
+
+                # Prepare item for creation (snapshotting)
+                order_items_to_create.append({
+                    'batch': batch,
+                    'product_name': batch.variant.product.name,
+                    'price': item_price,
+                    'quantity': qty,
+                    'unit': batch.variant.unit
+                })
+
+            # 2. Get Delivery Fee from actual slot config (or simple logic for now)
+            # In a real app, you'd fetch the DeliverySlot model here.
+            delivery_fee = 25 if subtotal < 199 else 0
+            total = subtotal + delivery_fee
+
+            # 3. Create the Order with calculated values
+            order = Order.objects.create(
+                user=user,
+                subtotal=subtotal,
+                delivery_fee=delivery_fee,
+                total=total,
+                **validated_data
+            )
+
+            # 4. Create items and deduct stock
+            for item in order_items_to_create:
+                batch = item.pop('batch')
+                qty = item['quantity']
+                
                 batch.stock_level -= qty
                 batch.save()
-
-                # Create Order Item (Snapshotting price and name)
-                OrderItem.objects.create(
-                    order=order,
-                    batch=batch,
-                    product_name=batch.product.name,
-                    price=batch.price,
-                    quantity=qty,
-                    unit=batch.product.unit
-                )
+                
+                OrderItem.objects.create(order=order, batch=batch, **item)
 
             return order
 

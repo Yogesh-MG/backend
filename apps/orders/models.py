@@ -21,8 +21,8 @@ class Order(models.Model):
 
     SLOT_CHOICES = [
         ('EXPRESS', 'Express (12 min)'),
-        ('TODAY', 'Today Evening'),
-        ('TOMORROW', 'Tomorrow Morning'),
+        ('SAME_DAY', 'Same Day'),
+        ('NEXT_DAY', 'Next Day'),
     ]
 
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='orders')
