@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from apps.accounts.models import FarmerProfile, User
+from apps.accounts.models import FarmerProfile, User, ProductVariant
 from .models import Category, SubCategory, Product, InventoryBatch, ProductBenefit
 
 class FarmerSerializer(serializers.ModelSerializer):
