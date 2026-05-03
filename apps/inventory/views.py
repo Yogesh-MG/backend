@@ -2,6 +2,7 @@ from rest_framework import viewsets, filters
 from django_filters.rest_framework import DjangoFilterBackend
 from .models import Category, Product, InventoryBatch
 from .serializers import CategorySerializer, ProductSerializer, InventoryBatchSerializer, FarmerSerializer
+from .filters import InventoryBatchFilter
 from apps.accounts.models import FarmerProfile
 
 class CategoryViewSet(viewsets.ReadOnlyModelViewSet):
@@ -26,14 +27,7 @@ class InventoryBatchViewSet(viewsets.ReadOnlyModelViewSet):
     )
     serializer_class = InventoryBatchSerializer
     filter_backends = [DjangoFilterBackend, filters.SearchFilter]
-    filterset_fields = [
-        'variant__product__category__slug', 
-        'variant__product__category', 
-        'variant__product__subcategory', 
-        'is_organic', 
-        'is_farm_fresh', 
-        'farmer'
-    ]
+    filterset_class = InventoryBatchFilter
     search_fields = ['variant__product__name', 'farmer__user__username']
 
 class FarmerViewSet(viewsets.ReadOnlyModelViewSet):
