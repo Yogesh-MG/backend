@@ -2,7 +2,7 @@ import random
 from django.core.management.base import BaseCommand
 from django.utils import timezone
 from apps.accounts.models import User, FarmerProfile
-from apps.inventory.models import Category, SubCategory, Product, InventoryBatch, ProductBenefit
+from apps.inventory.models import Category, SubCategory, Product, InventoryBatch, ProductBenefit, ProductVariant
 
 class Command(BaseCommand):
     help = 'Seeds the database with initial Freshon.in data'
