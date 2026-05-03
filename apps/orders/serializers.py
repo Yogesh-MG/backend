@@ -15,7 +15,7 @@ class OrderCreateSerializer(serializers.ModelSerializer):
         model = Order
         fields = [
             'address_title', 'address_line', 'delivery_slot', 
-            'payment_method', 'items', 'subtotal', 'delivery_fee', 'total'
+            'payment_method', 'items', 'subtotal', 'delivery_fee', 'total', 'is_paid'
         ]
 
     def create(self, validated_data):
