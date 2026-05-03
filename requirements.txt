@@ -9,3 +9,4 @@ gunicorn
 python-dotenv
 dj-database-url
 django-filter
+razorpay

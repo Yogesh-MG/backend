@@ -50,6 +50,8 @@ INSTALLED_APPS = [
     "apps.accounts",
     "apps.inventory",
     "apps.orders",
+    "apps.delivery",
+    "apps.payment",
 ]
 
 MIDDLEWARE = [
@@ -201,3 +203,7 @@ JWT_AUTH_COOKIE_PATH = '/'
 
 # Default Auto Field
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+
+# Razorpay Configuration
+RAZORPAY_KEY_ID = os.getenv("RAZORPAY_KEY_ID", "")
+RAZORPAY_KEY_SECRET = os.getenv("RAZORPAY_KEY_SECRET", "")
