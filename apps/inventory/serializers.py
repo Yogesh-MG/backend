@@ -69,6 +69,7 @@ class InventoryBatchSerializer(serializers.ModelSerializer):
     product_name = serializers.CharField(source='variant.product.name', read_only=True)
     product_id = serializers.IntegerField(source='variant.product.id', read_only=True)
     category_name = serializers.CharField(source='variant.product.category.name', read_only=True)
+    category_slug = serializers.CharField(source='variant.product.category.slug', read_only=True)
     description = serializers.CharField(source='variant.product.description', read_only=True)
     base_image = serializers.ImageField(source='variant.product.base_image', read_only=True)
     farmer = FarmerSerializer(read_only=True)
@@ -78,7 +79,7 @@ class InventoryBatchSerializer(serializers.ModelSerializer):
         model = InventoryBatch
         fields = [
             'id', 'farmer', 'variant', 'product_name', 'product_id', 
-            'category_name', 'description', 'base_image',
+            'category_name', 'category_slug', 'description', 'base_image',
             'price', 'mrp', 'stock_level', 'harvest_date', 
             'harvest_date_display', 'is_organic', 'is_farm_fresh', 'batch_image'
         ]
