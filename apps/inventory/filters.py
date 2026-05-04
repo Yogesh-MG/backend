@@ -5,7 +5,8 @@ class InventoryBatchFilter(filters.FilterSet):
     category = filters.CharFilter(field_name='variant__product__category')
     category_slug = filters.CharFilter(field_name='variant__product__category__slug')
     subcategory = filters.CharFilter(field_name='variant__product__subcategory')
+    product_id = filters.NumberFilter(field_name='variant__product__id')
     
     class Meta:
         model = InventoryBatch
-        fields = ['category', 'category_slug', 'subcategory', 'is_organic', 'is_farm_fresh', 'farmer']
+        fields = ['category', 'category_slug', 'subcategory', 'product_id', 'is_organic', 'is_farm_fresh', 'farmer']
