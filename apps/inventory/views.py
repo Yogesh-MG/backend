@@ -40,6 +40,7 @@ class CategoryViewSet(viewsets.ReadOnlyModelViewSet):
     GET /categories/{slug}/subcategories/  → subcategories only
     """
     lookup_field = 'slug'
+    pagination_class = StandardPagination
 
     def get_queryset(self):
         # Annotate subcategory_count for the list serializer

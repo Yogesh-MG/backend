@@ -14,9 +14,20 @@ class Order(models.Model):
     ]
 
     PAYMENT_METHODS = [
+        ('WALLET', 'Wallet Only'),
+        ('WALLET_CARD', 'Wallet + Card'),
+        ('WALLET_UPI', 'Wallet + UPI'),
         ('UPI', 'UPI'),
         ('CARD', 'Credit/Debit Card'),
         ('COD', 'Cash on Delivery'),
+    ]
+
+    PAYMENT_STATUS = [
+        ('PENDING', 'Pending'),
+        ('PROCESSING', 'Processing'),
+        ('COMPLETED', 'Completed'),
+        ('FAILED', 'Failed'),
+        ('REFUNDED', 'Refunded'),
     ]
 
     SLOT_CHOICES = [
@@ -37,7 +48,10 @@ class Order(models.Model):
     delivery_fee = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
     
     # Payment Info
-    payment_method = models.CharField(max_length=10, choices=PAYMENT_METHODS, default='UPI')
+    payment_method = models.CharField(max_length=20, choices=PAYMENT_METHODS, default='UPI')
+    payment_status = models.CharField(max_length=20, choices=PAYMENT_STATUS, default='PENDING')
+    wallet_amount_used = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
+    remaining_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
     is_paid = models.BooleanField(default=False)
     
     # Totals
