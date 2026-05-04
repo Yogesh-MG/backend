@@ -213,29 +213,46 @@ class Command(BaseCommand):
 
         self.stdout.write("Creating Farmers...")
         farmers_data = [
-            {"username": "lakshmi", "name": "Lakshmi Devi", "loc": "Mysuru"},
-            {"username": "ramesh", "name": "Ramesh Patil", "loc": "Nashik"},
-            {"username": "anita", "name": "Anita Sharma", "loc": "Mahabaleshwar"},
-            {"username": "gurpreet", "name": "Gurpreet Singh", "loc": "Amritsar"},
-            {"username": "venkat", "name": "Venkat Raman", "loc": "Salem"},
+            {"username": "lakshmi", "name": "Lakshmi Devi", "loc": "Mysuru", "img": "https://images.unsplash.com/photo-1544005313-94ddf0286df2"},
+            {"username": "ramesh", "name": "Ramesh Patil", "loc": "Nashik", "img": "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d"},
+            {"username": "anita", "name": "Anita Sharma", "loc": "Mahabaleshwar", "img": "https://images.unsplash.com/photo-1438761681033-6461ffad8d80"},
+            {"username": "gurpreet", "name": "Gurpreet Singh", "loc": "Amritsar", "img": "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e"},
+            {"username": "venkat", "name": "Venkat Raman", "loc": "Salem", "img": "https://images.unsplash.com/photo-1500648767791-00dcc994a43e"},
         ]
         farmer_profiles = []
         for f in farmers_data:
             user, _ = User.objects.get_or_create(username=f['username'], defaults={"role": User.Role.FARMER})
+            user.first_name = f['name'].split()[0]
+            user.last_name = f['name'].split()[1] if len(f['name'].split()) > 1 else ""
             user.set_password("freshon123")
             user.save()
             profile, _ = FarmerProfile.objects.get_or_create(user=user, defaults={"location": f['loc'], "rating": 4.9})
+            profile.image = f['img']
+            profile.save()
             farmer_profiles.append(profile)
 
         self.stdout.write("Seeding 200+ Products with variants...")
         
         # Image pools for variety
         img_pools = {
-            "Vegetables": "https://images.unsplash.com/photo-1566385101042-1a0aa0c12e8c",
-            "Fruits": "https://images.unsplash.com/photo-1619566639371-106497061938",
-            "Dairy": "https://images.unsplash.com/photo-1550583724-125581cc2532",
-            "Grains": "https://images.unsplash.com/photo-1586201375761-83865001e31c",
-            "Spices": "https://images.unsplash.com/photo-1596040033229-a9821ebd058d",
+            "Vegetables": "https://images.unsplash.com/photo-1597362925123-77861d3fbac7",
+            "Fruits": "https://images.unsplash.com/photo-1610832958506-aa56368176cf",
+            "Dairy & Eggs": "https://images.unsplash.com/photo-1628088062854-d1870b4553ad",
+            "Grains & Rice": "https://images.unsplash.com/photo-1586201375761-83865001e31c",
+            "Pulses & Dals": "https://images.unsplash.com/photo-1585994192701-97061730872c",
+            "Spices & Masala": "https://images.unsplash.com/photo-1596040033229-a9821ebd058d",
+            "Oils & Ghee": "https://images.unsplash.com/photo-1474979266404-7eaacbcd87c5",
+            "Nuts & Seeds": "https://images.unsplash.com/photo-1536591030366-f76f74296482",
+            "Flours & Atta": "https://images.unsplash.com/photo-1509440159596-0249088772ff",
+            "Beverages": "https://images.unsplash.com/photo-1544787210-2211d7c00676",
+            "Bakery": "https://images.unsplash.com/photo-1509440159596-0249088772ff",
+            "Herbs & Seasoning": "https://images.unsplash.com/photo-1506477331477-33d6d8b3dc85",
+            "Exotic Produce": "https://images.unsplash.com/photo-1601004890684-d8cbf643f5f2",
+            "Honey & Jams": "https://images.unsplash.com/photo-1587049352846-4a222e784d38",
+            "Snacks": "https://images.unsplash.com/photo-1599490659213-e2b9527bb087",
+            "Flowers": "https://images.unsplash.com/photo-1526047932273-341f2a7631f9",
+            "Microgreens": "https://images.unsplash.com/photo-1592752547487-526421886134",
+            "Pooja Essentials": "https://images.unsplash.com/photo-1584622650111-993a426fbf0a",
             "Default": "https://images.unsplash.com/photo-1542838132-92c53300491e"
         }
 
@@ -271,8 +288,8 @@ class Command(BaseCommand):
                     )
                     
                     # Add image link (hack for ImageField)
-                    base_img = img_pools.get(cat_name.split()[0], img_pools["Default"])
-                    prod.base_image = f"{base_img}?auto=format&fit=crop&q=80&w=400&h=400&sig={product_count}"
+                    base_img = img_pools.get(cat_name, img_pools["Default"])
+                    prod.base_image = f"{base_img}?auto=format&fit=crop&q=80&w=600&h=600&sig={product_count}"
                     prod.save()
 
                     # Add variants
