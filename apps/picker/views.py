@@ -8,6 +8,8 @@ Endpoints:
   POST /api/picker/queue/{order_id}/pack/         — Mark all items packed
   POST /api/picker/queue/{order_id}/handover/     — Hand to delivery
   POST /api/picker/geo-verify/                    — Verify picker at hub
+  POST /api/picker/setup-pin/                     — Set quick access PIN
+  POST /api/picker/login-pin/                     — Login using PIN
 """
 import math
 from django.utils import timezone
@@ -16,10 +18,13 @@ from django.views.decorators.csrf import csrf_exempt
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
+from rest_framework.permissions import AllowAny, IsAuthenticated
+from rest_framework_simplejwt.tokens import RefreshToken
 
 from .models import PickerProfile, PickerTask, PickerTaskItem
 from .serializers import PickerTaskSerializer
 from .permissions import IsPickerUser
+from apps.accounts.views import _set_auth_cookies
 
 
 @method_decorator(csrf_exempt, name='dispatch')
@@ -94,11 +99,89 @@ class PickerGeoVerifyView(APIView):
 
 
 @method_decorator(csrf_exempt, name='dispatch')
+class PickerSetupPinView(APIView):
+    """
+    POST /api/picker/setup-pin/
+    Set a numeric PIN for the authenticated picker.
+    """
+    permission_classes = [IsPickerUser]
+
+    def post(self, request):
+        pin = request.data.get('pin')
+        if not pin or not str(pin).isdigit() or len(str(pin)) != 4:
+            return Response({'error': 'A 4-digit numeric PIN is required'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        profile = request.user.picker_profile
+        profile.pin = pin
+        profile.save()
+        
+        return Response({'success': True, 'message': 'PIN setup successfully'})
+
+
+@method_decorator(csrf_exempt, name='dispatch')
+class PickerLoginPinView(APIView):
+    """
+    POST /api/picker/login-pin/
+    Login using employee_id (username) and PIN.
+    """
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        employee_id = request.data.get('employee_id')
+        pin = request.data.get('pin')
+        
+        if not employee_id or not pin:
+            return Response({'error': 'Employee ID and PIN are required'}, status=status.HTTP_400_BAD_REQUEST)
+            
+        try:
+            profile = PickerProfile.objects.get(user__username=employee_id, pin=pin, is_active=True)
+            user = profile.user
+        except PickerProfile.DoesNotExist:
+            return Response({'error': 'Invalid ID or PIN'}, status=status.HTTP_401_UNAUTHORIZED)
+            
+        # Generate tokens
+        refresh = RefreshToken.for_user(user)
+        
+        # Operational apps get long-lived tokens (30 days)
+        # We check for the app header
+        platform = request.headers.get('X-App-Platform')
+        is_app = platform in ['PickerApp', 'DeliveryApp', 'FarmerApp']
+        
+        from datetime import timedelta
+        if is_app:
+            refresh.set_exp(lifetime=timedelta(days=90))
+            refresh.access_token.set_exp(lifetime=timedelta(days=30))
+            
+        access_token = str(refresh.access_token)
+        refresh_token = str(refresh)
+        
+        response = Response({
+            'access_token': access_token,
+            'refresh_token': refresh_token,
+            'user': {
+                'id': user.id,
+                'username': user.username,
+                'role': user.role,
+                'first_name': user.first_name,
+                'last_name': user.last_name,
+            },
+            'picker_profile': {
+                'hub_name': profile.hub_name,
+                'hub_latitude': float(profile.hub.latitude) if profile.hub else float(profile.hub_latitude),
+                'hub_longitude': float(profile.hub.longitude) if profile.hub else float(profile.hub_longitude),
+                'hub_radius_meters': profile.hub.radius_meters if profile.hub else profile.hub_radius_meters,
+            }
+        })
+        
+        _set_auth_cookies(response, access_token, refresh_token, is_app_request=is_app)
+        return response
+
+
+@method_decorator(csrf_exempt, name='dispatch')
 class PickerQueueView(APIView):
     """
     GET /api/picker/queue/
-    List all orders in the queue that are available to pick,
-    plus orders currently assigned to this picker.
+    List all orders in the queue that are available to pick.
     """
     permission_classes = [IsPickerUser]
 
@@ -108,18 +191,13 @@ class PickerQueueView(APIView):
         ).select_related('order', 'order__user').prefetch_related('items')
 
         # Filter: show queued (unassigned) tasks + tasks assigned to this picker
+        from django.db.models import Q
         tasks = tasks.filter(
-            models_q_queued_or_mine(request.user)
+            Q(status='QUEUED', picker__isnull=True) | Q(picker=request.user)
         )
 
         serializer = PickerTaskSerializer(tasks, many=True)
         return Response(serializer.data)
-
-
-def models_q_queued_or_mine(user):
-    """Return Q filter for tasks that are either unassigned or mine."""
-    from django.db.models import Q
-    return Q(status='QUEUED', picker__isnull=True) | Q(picker=user)
 
 
 @method_decorator(csrf_exempt, name='dispatch')
@@ -191,15 +269,10 @@ class PickerScanView(APIView):
 
         item.scanned_barcode = barcode
 
-        # Check if barcode matches (flexible: batch_code match or product SKU match)
-        if item.batch_code and barcode == item.batch_code:
+        if (item.batch_code and barcode == item.batch_code) or (item.sku and barcode == item.sku):
             item.status = 'packed'
             item.save()
             return Response({'verified': True, 'message': 'Item verified and packed!'})
-        elif item.sku and barcode == item.sku:
-            item.status = 'packed'
-            item.save()
-            return Response({'verified': True, 'message': 'Item verified by SKU and packed!'})
         else:
             item.status = 'issue'
             item.save()
@@ -223,20 +296,12 @@ class PickerPackView(APIView):
         except PickerTask.DoesNotExist:
             return Response({'error': 'Task not found or not assigned to you'}, status=status.HTTP_404_NOT_FOUND)
 
-        if task.status not in ['IN_PROGRESS']:
-            return Response({'error': f'Cannot pack a task in {task.status} status'}, status=status.HTTP_400_BAD_REQUEST)
-
-        # Mark all remaining items as packed
         task.items.filter(status__in=['pending', 'scanning']).update(status='packed')
-
         task.status = 'PACKED'
         task.packed_at = timezone.now()
         task.save()
 
-        return Response({
-            'message': 'All items packed successfully!',
-            'status': task.status,
-        })
+        return Response({'message': 'All items packed successfully!', 'status': task.status})
 
 
 @method_decorator(csrf_exempt, name='dispatch')
@@ -253,24 +318,11 @@ class PickerHandoverView(APIView):
         except PickerTask.DoesNotExist:
             return Response({'error': 'Task not found or not assigned to you'}, status=status.HTTP_404_NOT_FOUND)
 
-        if task.status != 'PACKED':
-            return Response({'error': f'Cannot hand over a task in {task.status} status'}, status=status.HTTP_400_BAD_REQUEST)
-
         task.status = 'HANDED_OVER'
         task.handed_over_at = timezone.now()
         task.save()
 
-        # Update order status
         task.order.status = 'SHIPPED'
         task.order.save()
 
-        delivery_partner_name = None
-        if task.delivery_partner:
-            delivery_partner_name = (
-                task.delivery_partner.get_full_name() or task.delivery_partner.username
-            )
-
-        return Response({
-            'message': 'Order handed over to delivery!',
-            'delivery_partner': delivery_partner_name,
-        })
+        return Response({'message': 'Order handed over to delivery!'})
