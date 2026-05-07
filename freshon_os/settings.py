@@ -14,6 +14,7 @@ from pathlib import Path
 import os 
 from decouple import config, Csv
 from datetime import timedelta
+from corsheaders.defaults import default_headers
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -183,6 +184,9 @@ SIMPLE_JWT = {
 # CORS Configuration
 CORS_ALLOW_ALL_ORIGINS = True  # For development
 CORS_ALLOW_CREDENTIALS = True  # Allow cookies
+CORS_ALLOW_HEADERS = list(default_headers) + [
+    "x-app-platform",
+]
 
 # CSRF Configuration
 CSRF_TRUSTED_ORIGINS = [
