@@ -1,5 +1,6 @@
 from rest_framework import serializers
-from .models import CustomerPreferences, CustomerSettings
+from .models import CustomerPreferences, CustomerSettings, User
+from apps.wallet.serializers import PartnershipSerializer
 
 class CustomerPreferencesSerializer(serializers.ModelSerializer):
     organicOnly = serializers.BooleanField(source="organic_only", required=False)
@@ -18,3 +19,11 @@ class CustomerSettingsSerializer(serializers.ModelSerializer):
     class Meta:
         model = CustomerSettings
         fields = ["orderUpdates", "offers", "weeklySummary", "privateProfile"]
+
+
+class UserSerializer(serializers.ModelSerializer):
+    partnership = PartnershipSerializer(read_only=True)
+
+    class Meta:
+        model = User
+        fields = ["id", "username", "email", "role", "is_verified", "partnership"]

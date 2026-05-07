@@ -12,7 +12,7 @@ from django.views.decorators.csrf import csrf_exempt
 from .models import CustomerPreferences, CustomerSettings, User
 from apps.delivery.models import DeliveryAddress
 from apps.delivery.serializers import DeliveryAddressSerializer
-from .serializers import CustomerPreferencesSerializer, CustomerSettingsSerializer
+from .serializers import CustomerPreferencesSerializer, CustomerSettingsSerializer, UserSerializer
 
 
 def _set_auth_cookies(response, access_token: str, refresh_token: str):
@@ -200,14 +200,8 @@ class CurrentUserView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        user = request.user
-        return Response({
-            'id': user.id,
-            'username': user.username,
-            'email': user.email,
-            'role': user.role,
-            'is_verified': user.is_verified,
-        })
+        serializer = UserSerializer(request.user)
+        return Response(serializer.data)
 
 
 class CustomerProfileDataView(APIView):
