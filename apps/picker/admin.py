@@ -1,6 +1,6 @@
 """Picker app admin registration."""
 from django.contrib import admin
-from .models import PickerProfile, PickerTask, PickerTaskItem
+from .models import PickerProfile, PickerTask, PickerTaskItem, Hub
 
 
 @admin.register(PickerProfile)
@@ -8,6 +8,8 @@ class PickerProfileAdmin(admin.ModelAdmin):
     list_display = ('user', 'hub_name', 'is_active', 'created_at')
     list_filter = ('is_active', 'hub_name')
     search_fields = ('user__username', 'hub_name')
+
+admin.site.register(Hub)
 
 
 class PickerTaskItemInline(admin.TabularInline):
