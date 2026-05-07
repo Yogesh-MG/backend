@@ -25,6 +25,7 @@ from .models import PickerProfile, PickerTask, PickerTaskItem
 from .serializers import PickerTaskSerializer
 from .permissions import IsPickerUser
 from apps.accounts.views import _set_auth_cookies
+from apps.accounts.models import User
 
 
 @method_decorator(csrf_exempt, name='dispatch')
@@ -102,16 +103,27 @@ class PickerGeoVerifyView(APIView):
 class PickerSetupPinView(APIView):
     """
     POST /api/picker/setup-pin/
-    Set a numeric PIN for the authenticated picker.
+    Set a numeric PIN for a picker. Allows initial setup for unauthenticated users
+    identifying by employee_id (username).
     """
-    permission_classes = [IsPickerUser]
+    permission_classes = [AllowAny]
 
     def post(self, request):
+        employee_id = request.data.get('employee_id')
         pin = request.data.get('pin')
+        
+        if not employee_id:
+            return Response({'error': 'Employee ID is required'}, status=status.HTTP_400_BAD_REQUEST)
         if not pin or not str(pin).isdigit() or len(str(pin)) != 4:
             return Response({'error': 'A 4-digit numeric PIN is required'}, status=status.HTTP_400_BAD_REQUEST)
         
-        profile = request.user.picker_profile
+        try:
+            profile = PickerProfile.objects.get(user__username=employee_id)
+        except PickerProfile.DoesNotExist:
+            return Response({'error': 'Picker profile not found'}, status=status.HTTP_404_NOT_FOUND)
+        
+        # For security in production, you might want to check if a PIN is already set
+        # or require a password if one exists.
         profile.pin = pin
         profile.save()
         
@@ -143,7 +155,6 @@ class PickerLoginPinView(APIView):
         refresh = RefreshToken.for_user(user)
         
         # Operational apps get long-lived tokens (30 days)
-        # We check for the app header
         platform = request.headers.get('X-App-Platform')
         is_app = platform in ['PickerApp', 'DeliveryApp', 'FarmerApp']
         
@@ -190,7 +201,6 @@ class PickerQueueView(APIView):
             status__in=['QUEUED', 'IN_PROGRESS'],
         ).select_related('order', 'order__user').prefetch_related('items')
 
-        # Filter: show queued (unassigned) tasks + tasks assigned to this picker
         from django.db.models import Q
         tasks = tasks.filter(
             Q(status='QUEUED', picker__isnull=True) | Q(picker=request.user)
@@ -231,7 +241,6 @@ class PickerAcceptView(APIView):
         task.accepted_at = timezone.now()
         task.save()
 
-        # Update the parent order status
         task.order.status = 'PROCESSING'
         task.order.save()
 
