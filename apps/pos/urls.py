@@ -1,0 +1,25 @@
+"""POS app URL configuration."""
+from django.urls import path
+from .views import (
+    PosLoginView,
+    PosShiftOpenView,
+    PosShiftCloseView,
+    PosShiftSummaryView,
+    PosProductsView,
+    PosCustomerLookupView,
+    PosCustomerCreateView,
+    PosOrderCreateView,
+    PosWastageView,
+)
+
+urlpatterns = [
+    path('login/', PosLoginView.as_view(), name='pos_login'),
+    path('shift/open/', PosShiftOpenView.as_view(), name='pos_shift_open'),
+    path('shift/close/', PosShiftCloseView.as_view(), name='pos_shift_close'),
+    path('shift/summary/', PosShiftSummaryView.as_view(), name='pos_shift_summary'),
+    path('products/', PosProductsView.as_view(), name='pos_products'),
+    path('customers/lookup/', PosCustomerLookupView.as_view(), name='pos_customer_lookup'),
+    path('customers/', PosCustomerCreateView.as_view(), name='pos_customer_create'),
+    path('orders/', PosOrderCreateView.as_view(), name='pos_order_create'),
+    path('wastage/', PosWastageView.as_view(), name='pos_wastage'),
+]

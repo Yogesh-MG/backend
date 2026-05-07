@@ -28,6 +28,11 @@ urlpatterns = [
     path("api/delivery/", include("apps.delivery.urls")),
     path("api/payment/", include("apps.payment.urls")),
     path("api/wallet/", include("apps.wallet.urls")),
+    # New operational APIs
+    path("api/picker/", include("apps.picker.urls")),
+    path("api/delivery-partner/", include("apps.delivery_partner.urls")),
+    path("api/farmer/", include("apps.farmer.urls")),
+    path("api/pos/", include("apps.pos.urls")),
 ]
 
 if settings.DEBUG:

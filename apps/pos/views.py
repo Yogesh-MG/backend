@@ -1,0 +1,403 @@
+"""
+POS app views.
+
+Endpoints:
+  POST /api/pos/login/              — PIN-based POS login
+  POST /api/pos/shift/open/         — Open shift
+  POST /api/pos/shift/close/        — Close shift
+  GET  /api/pos/shift/summary/      — Current shift summary
+  GET  /api/pos/products/           — POS product catalog
+  POST /api/pos/orders/             — Walk-in order
+  GET  /api/pos/customers/lookup/   — Customer lookup by phone
+  POST /api/pos/customers/          — Register walk-in customer
+  POST /api/pos/wastage/            — Log wastage
+  GET  /api/pos/wastage/            — Get wastage for current shift
+"""
+from decimal import Decimal
+
+from django.utils import timezone
+from django.utils.decorators import method_decorator
+from django.views.decorators.csrf import csrf_exempt
+from django.contrib.auth import authenticate
+from django.db import transaction
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework import status
+from rest_framework.permissions import AllowAny
+from rest_framework_simplejwt.tokens import RefreshToken
+
+from apps.accounts.models import User
+from apps.inventory.models import InventoryBatch
+from .models import (
+    PosEmployee, PosCustomer, PosShift,
+    PosTransaction, PosTransactionItem, PosTender, PosWastageLog,
+)
+from .serializers import (
+    PosProductSerializer, PosCustomerSerializer,
+    PosOrderCreateSerializer, PosTransactionSerializer,
+    PosShiftSerializer, PosShiftSummarySerializer,
+    PosWastageSerializer,
+)
+from .permissions import IsPosOperator
+
+
+def _set_auth_cookies(response, access_token, refresh_token):
+    """Reuse cookie-setting pattern from accounts."""
+    from django.conf import settings as s
+    kw = dict(
+        secure=s.JWT_AUTH_COOKIE_SECURE,
+        httponly=s.JWT_AUTH_COOKIE_HTTP_ONLY,
+        samesite=s.JWT_AUTH_COOKIE_SAMESITE,
+        path=s.JWT_AUTH_COOKIE_PATH,
+    )
+    response.set_cookie(key=s.JWT_AUTH_COOKIE, value=access_token, max_age=3600, **kw)
+    response.set_cookie(key=s.JWT_AUTH_REFRESH_COOKIE, value=refresh_token, max_age=86400, **kw)
+
+
+@method_decorator(csrf_exempt, name='dispatch')
+class PosLoginView(APIView):
+    """
+    POST /api/pos/login/
+    PIN-based login for POS terminals.
+    """
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        employee_id = request.data.get('employee_id', '')
+        pin = request.data.get('pin', '')
+
+        if not employee_id or not pin:
+            return Response(
+                {'error': 'employee_id and pin are required'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            employee = PosEmployee.objects.select_related('user').get(
+                employee_id=employee_id, pin=pin, is_active=True,
+            )
+        except PosEmployee.DoesNotExist:
+            return Response(
+                {'error': 'Invalid employee ID or PIN'},
+                status=status.HTTP_401_UNAUTHORIZED,
+            )
+
+        user = employee.user
+        refresh = RefreshToken.for_user(user)
+        access_token = str(refresh.access_token)
+        refresh_token = str(refresh)
+
+        response = Response({
+            'message': 'POS login successful',
+            'access': access_token,
+            'refresh': refresh_token,
+            'employee_name': user.get_full_name() or user.username,
+        })
+        _set_auth_cookies(response, access_token, refresh_token)
+        return response
+
+
+@method_decorator(csrf_exempt, name='dispatch')
+class PosShiftOpenView(APIView):
+    """POST /api/pos/shift/open/"""
+    permission_classes = [IsPosOperator]
+
+    def post(self, request):
+        employee_id = request.data.get('employee_id', '')
+        opening_cash = request.data.get('opening_cash', 0)
+
+        try:
+            employee = PosEmployee.objects.get(
+                user=request.user, employee_id=employee_id,
+            )
+        except PosEmployee.DoesNotExist:
+            # Fallback: use user's employee record
+            try:
+                employee = request.user.pos_employee
+            except PosEmployee.DoesNotExist:
+                return Response(
+                    {'error': 'POS employee record not found'},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
+
+        # Check for already-open shift
+        open_shift = PosShift.objects.filter(employee=employee, is_open=True).first()
+        if open_shift:
+            return Response({
+                'message': 'Shift already open',
+                'shift_id': str(open_shift.id),
+            })
+
+        shift = PosShift.objects.create(
+            employee=employee,
+            opening_cash=Decimal(str(opening_cash)),
+        )
+
+        return Response({
+            'message': 'Shift opened',
+            'shift_id': str(shift.id),
+        }, status=status.HTTP_201_CREATED)
+
+
+@method_decorator(csrf_exempt, name='dispatch')
+class PosShiftCloseView(APIView):
+    """POST /api/pos/shift/close/"""
+    permission_classes = [IsPosOperator]
+
+    def post(self, request):
+        closing_cash = request.data.get('closing_cash', 0)
+        notes = request.data.get('notes', '')
+
+        try:
+            employee = request.user.pos_employee
+        except PosEmployee.DoesNotExist:
+            return Response({'error': 'Employee not found'}, status=status.HTTP_404_NOT_FOUND)
+
+        shift = PosShift.objects.filter(employee=employee, is_open=True).first()
+        if not shift:
+            return Response({'error': 'No open shift found'}, status=status.HTTP_404_NOT_FOUND)
+
+        shift.closing_cash = Decimal(str(closing_cash))
+        shift.notes = notes
+        shift.is_open = False
+        shift.closed_at = timezone.now()
+        shift.save()
+
+        serializer = PosShiftSummarySerializer(shift)
+        return Response(serializer.data)
+
+
+@method_decorator(csrf_exempt, name='dispatch')
+class PosShiftSummaryView(APIView):
+    """GET /api/pos/shift/summary/"""
+    permission_classes = [IsPosOperator]
+
+    def get(self, request):
+        try:
+            employee = request.user.pos_employee
+        except PosEmployee.DoesNotExist:
+            return Response({'error': 'Employee not found'}, status=status.HTTP_404_NOT_FOUND)
+
+        shift = PosShift.objects.filter(employee=employee).order_by('-started_at').first()
+        if not shift:
+            return Response({'error': 'No shift found'}, status=status.HTTP_404_NOT_FOUND)
+
+        serializer = PosShiftSummarySerializer(shift)
+        return Response(serializer.data)
+
+
+@method_decorator(csrf_exempt, name='dispatch')
+class PosProductsView(APIView):
+    """
+    GET /api/pos/products/
+    Derives POS catalog from inventory batches with stock > 0.
+    """
+    permission_classes = [IsPosOperator]
+
+    def get(self, request):
+        category = request.query_params.get('category')
+        search = request.query_params.get('search')
+
+        batches = InventoryBatch.objects.filter(
+            stock_level__gt=0,
+        ).select_related(
+            'variant', 'variant__product', 'variant__product__category',
+        )
+
+        if category:
+            batches = batches.filter(variant__product__category__slug=category)
+        if search:
+            batches = batches.filter(variant__product__name__icontains=search)
+
+        products = []
+        for batch in batches:
+            product = batch.variant.product
+            products.append({
+                'pid': str(batch.id),
+                'name': f"{product.name} ({batch.variant.unit})",
+                'price': float(batch.price),
+                'weighed': 'kg' in batch.variant.unit.lower() or 'g' in batch.variant.unit.lower(),
+                'category': product.category.name if product.category else '',
+                'stock': batch.stock_level,
+                'low_stock_threshold': 5,
+                'member_eligible': True,
+            })
+
+        serializer = PosProductSerializer(products, many=True)
+        return Response(serializer.data)
+
+
+@method_decorator(csrf_exempt, name='dispatch')
+class PosCustomerLookupView(APIView):
+    """GET /api/pos/customers/lookup/?phone=..."""
+    permission_classes = [IsPosOperator]
+
+    def get(self, request):
+        phone = request.query_params.get('phone', '')
+        if not phone:
+            return Response({'error': 'phone parameter required'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            customer = PosCustomer.objects.get(phone=phone)
+            return Response(PosCustomerSerializer(customer).data)
+        except PosCustomer.DoesNotExist:
+            return Response({'error': 'Customer not found'}, status=status.HTTP_404_NOT_FOUND)
+
+
+@method_decorator(csrf_exempt, name='dispatch')
+class PosCustomerCreateView(APIView):
+    """POST /api/pos/customers/"""
+    permission_classes = [IsPosOperator]
+
+    def post(self, request):
+        name = request.data.get('name', '')
+        phone = request.data.get('phone', '')
+        email = request.data.get('email', '')
+
+        if not name or not phone:
+            return Response({'error': 'name and phone required'}, status=status.HTTP_400_BAD_REQUEST)
+
+        customer, created = PosCustomer.objects.get_or_create(
+            phone=phone,
+            defaults={'name': name, 'email': email},
+        )
+
+        if not created:
+            return Response(
+                {'error': 'Customer with this phone already exists'},
+                status=status.HTTP_409_CONFLICT,
+            )
+
+        return Response(PosCustomerSerializer(customer).data, status=status.HTTP_201_CREATED)
+
+
+@method_decorator(csrf_exempt, name='dispatch')
+class PosOrderCreateView(APIView):
+    """POST /api/pos/orders/"""
+    permission_classes = [IsPosOperator]
+
+    def post(self, request):
+        serializer = PosOrderCreateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+
+        try:
+            employee = request.user.pos_employee
+        except PosEmployee.DoesNotExist:
+            return Response({'error': 'Employee not found'}, status=status.HTTP_404_NOT_FOUND)
+
+        shift = PosShift.objects.filter(employee=employee, is_open=True).first()
+        if not shift:
+            return Response({'error': 'No open shift'}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Resolve customer
+        customer = None
+        customer_id = data.get('customer_id')
+        if customer_id:
+            try:
+                customer = PosCustomer.objects.get(id=customer_id)
+            except (PosCustomer.DoesNotExist, Exception):
+                pass
+
+        # Determine payment method
+        tenders = data.get('tenders', [])
+        method = tenders[0]['method'] if len(tenders) == 1 else 'Split'
+
+        with transaction.atomic():
+            txn = PosTransaction.objects.create(
+                shift=shift,
+                customer=customer,
+                method=method,
+                subtotal=data['subtotal'],
+                member_discount=data.get('member_discount', 0),
+                surcharge=data.get('surcharge', 0),
+                total=data['total'],
+                receipt_delivery=data.get('receipt_delivery', ''),
+            )
+
+            # Create items
+            for item in data['items']:
+                PosTransactionItem.objects.create(
+                    transaction=txn,
+                    pid=item['pid'],
+                    name=item['name'],
+                    unit_price=Decimal(str(item['unit_price'])),
+                    weighed=item.get('weighed', False),
+                    quantity=Decimal(str(item['quantity'])),
+                    member_eligible=item.get('member_eligible', False),
+                )
+
+            # Create tenders
+            for tender in tenders:
+                PosTender.objects.create(
+                    transaction=txn,
+                    method=tender['method'],
+                    amount=Decimal(str(tender['amount'])),
+                )
+
+            # Update shift totals
+            shift.txn_count += 1
+            shift.total_sales += txn.total
+            if method == 'Cash' or any(t['method'] == 'Cash' for t in tenders):
+                cash_amount = sum(
+                    Decimal(str(t['amount'])) for t in tenders if t['method'] == 'Cash'
+                )
+                shift.cash_sales += cash_amount
+            shift.save()
+
+        return Response(PosTransactionSerializer(txn).data, status=status.HTTP_201_CREATED)
+
+
+@method_decorator(csrf_exempt, name='dispatch')
+class PosWastageView(APIView):
+    """
+    POST /api/pos/wastage/ — Log wastage
+    GET  /api/pos/wastage/ — Get wastage for current shift
+    """
+    permission_classes = [IsPosOperator]
+
+    def get(self, request):
+        try:
+            employee = request.user.pos_employee
+        except PosEmployee.DoesNotExist:
+            return Response([], status=status.HTTP_200_OK)
+
+        shift = PosShift.objects.filter(employee=employee).order_by('-started_at').first()
+        if not shift:
+            return Response([], status=status.HTTP_200_OK)
+
+        logs = shift.wastage_logs.all()
+        serializer = PosWastageSerializer(logs, many=True)
+        return Response(serializer.data)
+
+    def post(self, request):
+        try:
+            employee = request.user.pos_employee
+        except PosEmployee.DoesNotExist:
+            return Response({'error': 'Employee not found'}, status=status.HTTP_404_NOT_FOUND)
+
+        shift = PosShift.objects.filter(employee=employee, is_open=True).first()
+        if not shift:
+            return Response({'error': 'No open shift'}, status=status.HTTP_400_BAD_REQUEST)
+
+        pid = request.data.get('pid', '')
+        name = request.data.get('name', '')
+        quantity = request.data.get('quantity', 0)
+        weighed = request.data.get('weighed', False)
+        unit_price = request.data.get('unit_price', 0)
+        reason = request.data.get('reason', 'Spoiled')
+
+        log = PosWastageLog.objects.create(
+            shift=shift,
+            pid=pid,
+            name=name,
+            quantity=Decimal(str(quantity)),
+            weighed=weighed,
+            unit_price=Decimal(str(unit_price)),
+            reason=reason,
+        )
+
+        return Response({
+            'message': 'Wastage logged',
+            'id': str(log.id),
+        }, status=status.HTTP_201_CREATED)

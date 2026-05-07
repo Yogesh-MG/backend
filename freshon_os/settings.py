@@ -53,6 +53,11 @@ INSTALLED_APPS = [
     "apps.delivery",
     "apps.payment",
     "apps.wallet",
+    # New operational apps
+    "apps.picker",
+    "apps.delivery_partner",
+    "apps.farmer",
+    "apps.pos",
 ]
 
 MIDDLEWARE = [

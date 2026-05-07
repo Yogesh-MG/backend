@@ -7,6 +7,8 @@ class User(AbstractUser):
         CUSTOMER = "CUSTOMER", "Customer"
         FARMER = "FARMER", "Farmer"
         DELIVERY = "DELIVERY", "Delivery"
+        PICKER = "PICKER", "Picker"
+        POS_OPERATOR = "POS_OPERATOR", "POS Operator"
 
     role = models.CharField(
         max_length=20, 
