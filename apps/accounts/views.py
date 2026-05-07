@@ -9,13 +9,14 @@ from django.contrib.auth import authenticate
 from django.conf import settings
 from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import csrf_exempt
+from datetime import timedelta
 from .models import CustomerPreferences, CustomerSettings, User
 from apps.delivery.models import DeliveryAddress
 from apps.delivery.serializers import DeliveryAddressSerializer
 from .serializers import CustomerPreferencesSerializer, CustomerSettingsSerializer, UserSerializer
 
 
-def _set_auth_cookies(response, access_token: str, refresh_token: str):
+def _set_auth_cookies(response, access_token: str, refresh_token: str, is_app_request: bool = False):
     """Helper: attach both JWT cookies to a response."""
     cookie_kwargs = dict(
         secure=settings.JWT_AUTH_COOKIE_SECURE,
@@ -23,16 +24,25 @@ def _set_auth_cookies(response, access_token: str, refresh_token: str):
         samesite=settings.JWT_AUTH_COOKIE_SAMESITE,
         path=settings.JWT_AUTH_COOKIE_PATH,
     )
+    
+    # Set expiration based on whether the request came from the mobile/desktop App
+    if is_app_request:
+        access_max_age = 30 * 24 * 3600  # 30 days
+        refresh_max_age = 90 * 24 * 3600 # 90 days
+    else:
+        access_max_age = 3600            # 1 hour
+        refresh_max_age = 86400          # 1 day
+
     response.set_cookie(
         key=settings.JWT_AUTH_COOKIE,
         value=access_token,
-        max_age=3600,  # 1 hour — mirrors SIMPLE_JWT ACCESS_TOKEN_LIFETIME
+        max_age=access_max_age,
         **cookie_kwargs,
     )
     response.set_cookie(
         key=settings.JWT_AUTH_REFRESH_COOKIE,
         value=refresh_token,
-        max_age=86400,  # 1 day — mirrors SIMPLE_JWT REFRESH_TOKEN_LIFETIME
+        max_age=refresh_max_age,
         **cookie_kwargs,
     )
 
@@ -96,7 +106,17 @@ class CookieTokenObtainView(APIView):
                 status=status.HTTP_401_UNAUTHORIZED,
             )
 
+        # Detect platform from custom header
+        platform = request.headers.get('X-App-Platform')
+        is_app_request = platform in ['PickerApp', 'DeliveryApp', 'FarmerApp']
+        
         refresh = RefreshToken.for_user(user)
+        
+        # Override token lifetime if request comes from the operational App
+        if is_app_request:
+            refresh.set_exp(lifetime=timedelta(days=90))
+            refresh.access_token.set_exp(lifetime=timedelta(days=30))
+
         access_token = str(refresh.access_token)
         refresh_token = str(refresh)
 
@@ -108,13 +128,11 @@ class CookieTokenObtainView(APIView):
                 'email': user.email,
                 'role': user.role,
             },
-            # Included in body for explicit non-cookie clients, including the
-            # Tauri APK. Web clients can still use the HttpOnly cookie below.
             'access': access_token,
             'refresh': refresh_token,
         })
 
-        _set_auth_cookies(response, access_token, refresh_token)
+        _set_auth_cookies(response, access_token, refresh_token, is_app_request=is_app_request)
         return response
 
 
@@ -122,12 +140,15 @@ class CookieTokenObtainView(APIView):
 class CookieTokenRefreshView(APIView):
     """
     Refresh — reads the refresh token from cookie, issues a new access token,
-    and (because ROTATE_REFRESH_TOKENS=True) also rotates the refresh token.
-    The old refresh token is automatically blacklisted by simplejwt.
+    and rotates the refresh token.
     """
     permission_classes = [AllowAny]
 
     def post(self, request):
+        # Detect platform from custom header
+        platform = request.headers.get('X-App-Platform')
+        is_app_request = platform in ['PickerApp', 'DeliveryApp', 'FarmerApp']
+
         # Cookie-first, body fallback for explicit non-cookie clients.
         raw_refresh = (
             request.COOKIES.get(settings.JWT_AUTH_REFRESH_COOKIE)
@@ -142,21 +163,21 @@ class CookieTokenRefreshView(APIView):
 
         try:
             refresh = RefreshToken(raw_refresh)
+            
+            # Maintain the long lifetime if this is an App request
+            if is_app_request:
+                refresh.set_exp(lifetime=timedelta(days=90))
+                refresh.access_token.set_exp(lifetime=timedelta(days=30))
 
-            # Calling refresh.access_token triggers rotation when
-            # ROTATE_REFRESH_TOKENS=True — simplejwt blacklists the old token.
             new_access = str(refresh.access_token)
-            # After rotation, `refresh` now represents the *new* refresh token.
             new_refresh = str(refresh)
 
             response = Response({
                 'message': 'Token refreshed',
-                # Return new tokens in body so explicit non-cookie clients can
-                # stay in sync with refresh-token rotation.
                 'access': new_access,
                 'refresh': new_refresh,
             })
-            _set_auth_cookies(response, new_access, new_refresh)
+            _set_auth_cookies(response, new_access, new_refresh, is_app_request=is_app_request)
             return response
 
         except (TokenError, InvalidToken):
@@ -168,10 +189,7 @@ class CookieTokenRefreshView(APIView):
 
 @method_decorator(csrf_exempt, name='dispatch')
 class CookieLogoutView(APIView):
-    """
-    Logout — blacklists the refresh token so it cannot be reused,
-    then clears both auth cookies from the client.
-    """
+    """Logout — clears auth cookies."""
     permission_classes = [AllowAny]
 
     def post(self, request):
@@ -183,9 +201,8 @@ class CookieLogoutView(APIView):
         if raw_refresh:
             try:
                 token = RefreshToken(raw_refresh)
-                token.blacklist()  # Adds to OutstandingToken / BlacklistedToken tables
+                token.blacklist()
             except (TokenError, InvalidToken):
-                # Already invalid/blacklisted — treat as successful logout
                 pass
 
         response = Response({'message': 'Logged out successfully'})
@@ -196,7 +213,7 @@ class CookieLogoutView(APIView):
 
 @method_decorator(csrf_exempt, name='dispatch')
 class CurrentUserView(APIView):
-    """Return the authenticated user's profile — used by the useMe hook."""
+    """Return the authenticated user's profile."""
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
