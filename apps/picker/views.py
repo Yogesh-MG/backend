@@ -58,9 +58,18 @@ class PickerGeoVerifyView(APIView):
                 status=status.HTTP_404_NOT_FOUND,
             )
 
-        # Haversine distance check
-        hub_lat = float(profile.hub_latitude)
-        hub_lng = float(profile.hub_longitude)
+        # Determine hub coordinates (prefer Hub relation over deprecated fields)
+        if profile.hub:
+            hub_lat = float(profile.hub.latitude)
+            hub_lng = float(profile.hub.longitude)
+            hub_radius = profile.hub.radius_meters
+            hub_name = profile.hub.name
+        else:
+            hub_lat = float(profile.hub_latitude)
+            hub_lng = float(profile.hub_longitude)
+            hub_radius = profile.hub_radius_meters
+            hub_name = profile.hub_name
+
         R = 6371000  # Earth's radius in meters
 
         dlat = math.radians(lat - hub_lat)
@@ -71,16 +80,16 @@ class PickerGeoVerifyView(APIView):
              math.sin(dlng / 2) ** 2)
         distance_m = R * 2 * math.asin(math.sqrt(a))
 
-        if distance_m <= profile.hub_radius_meters:
+        if distance_m <= hub_radius:
             return Response({
                 'verified': True,
-                'message': f'Welcome to {profile.hub_name}!',
-                'hub_name': profile.hub_name,
+                'message': f'Welcome to {hub_name}!',
+                'hub_name': hub_name,
             })
         else:
             return Response({
                 'verified': False,
-                'message': f'You are {int(distance_m)}m away from {profile.hub_name}. Please move closer.',
+                'message': f'You are {int(distance_m)}m away from {hub_name}. Please move closer.',
             })
 
 

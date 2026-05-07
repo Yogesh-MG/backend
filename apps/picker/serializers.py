@@ -1,6 +1,13 @@
 """Picker app serializers."""
 from rest_framework import serializers
-from .models import PickerProfile, PickerTask, PickerTaskItem
+from .models import Hub, PickerProfile, PickerTask, PickerTaskItem
+
+
+class HubSerializer(serializers.ModelSerializer):
+    """Serializer for hub locations."""
+    class Meta:
+        model = Hub
+        fields = ['id', 'name', 'latitude', 'longitude', 'radius_meters']
 
 
 class PickerTaskItemSerializer(serializers.ModelSerializer):
@@ -62,10 +69,22 @@ class PickerGeoVerifyResponseSerializer(serializers.Serializer):
 class PickerProfileSerializer(serializers.ModelSerializer):
     """Serializer for the picker's profile."""
     username = serializers.CharField(source='user.username', read_only=True)
+    hub_details = HubSerializer(source='hub', read_only=True)
 
     class Meta:
         model = PickerProfile
         fields = [
-            'id', 'username', 'hub_name', 'hub_latitude', 'hub_longitude',
+            'id', 'username', 'hub', 'hub_details',
+            'hub_name', 'hub_latitude', 'hub_longitude',
             'hub_radius_meters', 'is_active',
         ]
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        # If hub relation exists, override deprecated fields with hub data
+        if instance.hub:
+            data['hub_name'] = instance.hub.name
+            data['hub_latitude'] = float(instance.hub.latitude)
+            data['hub_longitude'] = float(instance.hub.longitude)
+            data['hub_radius_meters'] = instance.hub.radius_meters
+        return data
