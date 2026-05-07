@@ -1,6 +1,6 @@
 """Picker app serializers."""
 from rest_framework import serializers
-from .models import Hub, PickerProfile, PickerTask, PickerTaskItem
+from .models import Hub, PickerProfile, PickerTask, PickerTaskItem, PickerShift, PickerLocationCheckIn
 
 
 class HubSerializer(serializers.ModelSerializer):
@@ -88,3 +88,24 @@ class PickerProfileSerializer(serializers.ModelSerializer):
             data['hub_longitude'] = float(instance.hub.longitude)
             data['hub_radius_meters'] = instance.hub.radius_meters
         return data
+
+
+class PickerShiftSerializer(serializers.ModelSerializer):
+    """Serializer for picker attendance shifts."""
+    employee_id = serializers.CharField(source='picker.username', read_only=True)
+
+    class Meta:
+        model = PickerShift
+        fields = [
+            'id', 'employee_id', 'shift_start', 'shift_end',
+            'break_start', 'break_end', 'total_pick_time_minutes',
+            'total_items_picked', 'total_orders_completed',
+            'location_check_points', 'device_id', 'created_at',
+        ]
+
+
+class PickerLocationCheckInSerializer(serializers.ModelSerializer):
+    """Serializer for location check-ins."""
+    class Meta:
+        model = PickerLocationCheckIn
+        fields = ['id', 'latitude', 'longitude', 'accuracy', 'timestamp']

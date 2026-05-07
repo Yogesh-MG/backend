@@ -163,3 +163,45 @@ class PickerTaskItem(models.Model):
 
     class Meta:
         ordering = ['name']
+
+
+class PickerShift(models.Model):
+    """Tracks a picker's work shift and attendance."""
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    picker = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='shifts',
+    )
+    shift_start = models.DateTimeField(auto_now_add=True)
+    shift_end = models.DateTimeField(null=True, blank=True)
+    break_start = models.DateTimeField(null=True, blank=True)
+    break_end = models.DateTimeField(null=True, blank=True)
+    
+    # Aggregated metrics for the shift
+    total_pick_time_minutes = models.PositiveIntegerField(default=0)
+    total_items_picked = models.PositiveIntegerField(default=0)
+    total_orders_completed = models.PositiveIntegerField(default=0)
+    location_check_points = models.PositiveIntegerField(default=0)
+    
+    device_id = models.CharField(max_length=255, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    def __str__(self):
+        return f"Shift {self.id} for {self.picker.username} - {self.shift_start}"
+
+    class Meta:
+        ordering = ['-shift_start']
+
+
+class PickerLocationCheckIn(models.Model):
+    """Periodic location check-ins during a shift."""
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    shift = models.ForeignKey(PickerShift, on_delete=models.CASCADE, related_name='checkins')
+    latitude = models.DecimalField(max_digits=9, decimal_places=6)
+    longitude = models.DecimalField(max_digits=9, decimal_places=6)
+    accuracy = models.FloatField(default=0)
+    timestamp = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        ordering = ['-timestamp']

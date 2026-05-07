@@ -21,8 +21,12 @@ from rest_framework import status
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework_simplejwt.tokens import RefreshToken
 
-from .models import PickerProfile, PickerTask, PickerTaskItem
-from .serializers import PickerTaskSerializer
+from .models import PickerProfile, PickerTask, PickerTaskItem, PickerShift, PickerLocationCheckIn
+from .serializers import (
+    PickerTaskSerializer,
+    PickerShiftSerializer,
+    PickerLocationCheckInSerializer,
+)
 from .permissions import IsPickerUser
 from apps.accounts.views import _set_auth_cookies
 from apps.accounts.models import User
@@ -335,3 +339,128 @@ class PickerHandoverView(APIView):
         task.order.save()
 
         return Response({'message': 'Order handed over to delivery!'})
+
+
+@method_decorator(csrf_exempt, name='dispatch')
+class PickerShiftStartView(APIView):
+    """POST /api/picker/shift-start/"""
+    permission_classes = [IsPickerUser]
+
+    def post(self, request):
+        device_id = request.data.get('device_id', '')
+        # End any previous unclosed shift for this picker
+        PickerShift.objects.filter(picker=request.user, shift_end__isnull=True).update(shift_end=timezone.now())
+        
+        shift = PickerShift.objects.create(
+            picker=request.user,
+            device_id=device_id
+        )
+        serializer = PickerShiftSerializer(shift)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+
+@method_decorator(csrf_exempt, name='dispatch')
+class PickerShiftEndView(APIView):
+    """POST /api/picker/shift-end/"""
+    permission_classes = [IsPickerUser]
+
+    def post(self, request):
+        try:
+            shift = PickerShift.objects.get(picker=request.user, shift_end__isnull=True)
+            shift.shift_end = timezone.now()
+            shift.save()
+            serializer = PickerShiftSerializer(shift)
+            return Response(serializer.data)
+        except PickerShift.DoesNotExist:
+            return Response({'error': 'No active shift found'}, status=status.HTTP_404_NOT_FOUND)
+
+
+@method_decorator(csrf_exempt, name='dispatch')
+class PickerBreakStartView(APIView):
+    """POST /api/picker/break-start/"""
+    permission_classes = [IsPickerUser]
+
+    def post(self, request):
+        try:
+            shift = PickerShift.objects.get(picker=request.user, shift_end__isnull=True)
+            shift.break_start = timezone.now()
+            shift.break_end = None
+            shift.save()
+            return Response({'success': True})
+        except PickerShift.DoesNotExist:
+            return Response({'error': 'No active shift found'}, status=status.HTTP_404_NOT_FOUND)
+
+
+@method_decorator(csrf_exempt, name='dispatch')
+class PickerBreakEndView(APIView):
+    """POST /api/picker/break-end/"""
+    permission_classes = [IsPickerUser]
+
+    def post(self, request):
+        try:
+            shift = PickerShift.objects.get(picker=request.user, shift_end__isnull=True)
+            shift.break_end = timezone.now()
+            shift.save()
+            return Response({'success': True})
+        except PickerShift.DoesNotExist:
+            return Response({'error': 'No active shift found'}, status=status.HTTP_404_NOT_FOUND)
+
+
+@method_decorator(csrf_exempt, name='dispatch')
+class PickerLocationCheckInView(APIView):
+    """POST /api/picker/location-checkin/"""
+    permission_classes = [IsPickerUser]
+
+    def post(self, request):
+        latitude = request.data.get('latitude')
+        longitude = request.data.get('longitude')
+        accuracy = request.data.get('accuracy', 0)
+
+        if latitude is None or longitude is None:
+            return Response({'error': 'latitude and longitude are required'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            shift = PickerShift.objects.get(picker=request.user, shift_end__isnull=True)
+            PickerLocationCheckIn.objects.create(
+                shift=shift,
+                latitude=latitude,
+                longitude=longitude,
+                accuracy=accuracy
+            )
+            shift.location_check_points += 1
+            shift.save()
+            return Response({'success': True})
+        except PickerShift.DoesNotExist:
+            return Response({'error': 'No active shift found'}, status=status.HTTP_404_NOT_FOUND)
+
+
+@method_decorator(csrf_exempt, name='dispatch')
+class PickerCurrentShiftView(APIView):
+    """GET /api/picker/current-shift/"""
+    permission_classes = [IsPickerUser]
+
+    def get(self, request):
+        try:
+            shift = PickerShift.objects.get(picker=request.user, shift_end__isnull=True)
+            serializer = PickerShiftSerializer(shift)
+            return Response(serializer.data)
+        except PickerShift.DoesNotExist:
+            return Response({'error': 'No active shift found'}, status=status.HTTP_404_NOT_FOUND)
+
+
+@method_decorator(csrf_exempt, name='dispatch')
+class PickerShiftHistoryView(APIView):
+    """GET /api/picker/shift-history/"""
+    permission_classes = [IsPickerUser]
+
+    def get(self, request):
+        try:
+            days = int(request.query_params.get('days', 7))
+        except (ValueError, TypeError):
+            days = 7
+            
+        from datetime import timedelta
+        start_date = timezone.now() - timedelta(days=days)
+        shifts = PickerShift.objects.filter(picker=request.user, shift_start__gte=start_date)
+        serializer = PickerShiftSerializer(shifts, many=True)
+        return Response(serializer.data)
