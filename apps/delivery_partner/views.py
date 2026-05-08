@@ -20,7 +20,9 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.parsers import MultiPartParser, FormParser
+from rest_framework.authentication import SessionAuthentication
 
+from apps.accounts.auth import DeviceAuthKeyAuthentication
 from .models import DeliveryPartnerProfile, DeliveryAssignment, DeliveryStop, ProofOfDelivery
 from .serializers import DeliveryAssignmentSerializer
 from .permissions import IsDeliveryPartner
@@ -28,6 +30,7 @@ from .permissions import IsDeliveryPartner
 
 @method_decorator(csrf_exempt, name='dispatch')
 class DeliveryPartnerStatusView(APIView):
+    authentication_classes = [DeviceAuthKeyAuthentication, SessionAuthentication]
     permission_classes = [IsDeliveryPartner]
 
     def patch(self, request):
@@ -50,6 +53,7 @@ class DeliveryPartnerStatusView(APIView):
 
 @method_decorator(csrf_exempt, name='dispatch')
 class DeliveryAssignmentsView(APIView):
+    authentication_classes = [DeviceAuthKeyAuthentication, SessionAuthentication]
     permission_classes = [IsDeliveryPartner]
 
     def get(self, request):
@@ -63,6 +67,7 @@ class DeliveryAssignmentsView(APIView):
 
 @method_decorator(csrf_exempt, name='dispatch')
 class DeliveryAcceptView(APIView):
+    authentication_classes = [DeviceAuthKeyAuthentication, SessionAuthentication]
     permission_classes = [IsDeliveryPartner]
 
     def post(self, request, assignment_id):
@@ -81,6 +86,7 @@ class DeliveryAcceptView(APIView):
 
 @method_decorator(csrf_exempt, name='dispatch')
 class DeliveryPickupView(APIView):
+    authentication_classes = [DeviceAuthKeyAuthentication, SessionAuthentication]
     permission_classes = [IsDeliveryPartner]
 
     def post(self, request, assignment_id):
@@ -99,6 +105,7 @@ class DeliveryPickupView(APIView):
 
 @method_decorator(csrf_exempt, name='dispatch')
 class DeliveryTransitView(APIView):
+    authentication_classes = [DeviceAuthKeyAuthentication, SessionAuthentication]
     permission_classes = [IsDeliveryPartner]
 
     def post(self, request, assignment_id):
@@ -128,6 +135,7 @@ class DeliveryTransitView(APIView):
 
 @method_decorator(csrf_exempt, name='dispatch')
 class DeliveryDeliverView(APIView):
+    authentication_classes = [DeviceAuthKeyAuthentication, SessionAuthentication]
     permission_classes = [IsDeliveryPartner]
 
     def post(self, request, assignment_id):
@@ -173,6 +181,7 @@ class DeliveryDeliverView(APIView):
 
 @method_decorator(csrf_exempt, name='dispatch')
 class DeliveryProofUploadView(APIView):
+    authentication_classes = [DeviceAuthKeyAuthentication, SessionAuthentication]
     permission_classes = [IsDeliveryPartner]
     parser_classes = [MultiPartParser, FormParser]
 
@@ -192,6 +201,7 @@ class DeliveryProofUploadView(APIView):
 
 @method_decorator(csrf_exempt, name='dispatch')
 class DeliveryEarningsView(APIView):
+    authentication_classes = [DeviceAuthKeyAuthentication, SessionAuthentication]
     permission_classes = [IsDeliveryPartner]
 
     def get(self, request):

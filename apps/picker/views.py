@@ -193,6 +193,34 @@ class PickerLoginPinView(APIView):
 
 
 @method_decorator(csrf_exempt, name='dispatch')
+class PickerVerifyAttendanceView(APIView):
+    """
+    POST /api/picker/verify-attendance/
+    Check if the picker has a valid Petpooja attendance record for today.
+    For now, returns on_duty: true if the user has a PickerProfile.
+    """
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        employee_id = request.data.get('employee_id')
+        
+        if not employee_id:
+            return Response({'error': 'Employee ID is required'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        try:
+            profile = PickerProfile.objects.get(user__username=employee_id, is_active=True)
+            return Response({
+                'on_duty': True,
+                'message': f'Picker {employee_id} is on duty',
+            })
+        except PickerProfile.DoesNotExist:
+            return Response({
+                'on_duty': False,
+                'message': f'Picker {employee_id} is not on duty or not found',
+            })
+
+
+@method_decorator(csrf_exempt, name='dispatch')
 class PickerQueueView(APIView):
     """
     GET /api/picker/queue/

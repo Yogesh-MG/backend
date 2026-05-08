@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import CustomerPreferences, CustomerSettings, User
+from .models import CustomerPreferences, CustomerSettings, User, OtpCode, DeviceAuthKey
 from apps.wallet.serializers import PartnershipSerializer
 
 class CustomerPreferencesSerializer(serializers.ModelSerializer):
@@ -23,7 +23,57 @@ class CustomerSettingsSerializer(serializers.ModelSerializer):
 
 class UserSerializer(serializers.ModelSerializer):
     partnership = PartnershipSerializer(read_only=True)
+    is_profile_complete = serializers.SerializerMethodField()
 
     class Meta:
         model = User
-        fields = ["id", "username", "email", "role", "is_verified", "partnership"]
+        fields = ["id", "username", "email", "role", "is_verified", "partnership", "is_profile_complete", "first_name"]
+
+    def get_is_profile_complete(self, obj):
+        return hasattr(obj, 'delivery_partner_profile') or bool(obj.first_name)
+
+
+class SendOtpSerializer(serializers.Serializer):
+    phone = serializers.CharField(max_length=15)
+
+    def validate_phone(self, value):
+        # Validate Indian phone number (10 digits starting with 6-9)
+        if not value.isdigit() or len(value) != 10:
+            raise serializers.ValidationError("Phone must be 10 digits")
+        if value[0] not in ['6', '7', '8', '9']:
+            raise serializers.ValidationError("Invalid Indian phone number")
+        return value
+
+
+class VerifyOtpSerializer(serializers.Serializer):
+    phone = serializers.CharField(max_length=15)
+    otp = serializers.CharField(max_length=6, min_length=6)
+    device_name = serializers.CharField(max_length=100, required=False, allow_blank=True)
+    device_identifier = serializers.CharField(max_length=255, required=False, allow_blank=True)
+
+    def validate_phone(self, value):
+        if not value.isdigit() or len(value) != 10:
+            raise serializers.ValidationError("Phone must be 10 digits")
+        return value
+
+    def validate_otp(self, value):
+        if not value.isdigit() or len(value) != 6:
+            raise serializers.ValidationError("OTP must be 6 digits")
+        return value
+
+
+class OtpResponseSerializer(serializers.Serializer):
+    phone = serializers.CharField()
+    message = serializers.CharField()
+
+
+class DeviceAuthKeyResponseSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = DeviceAuthKey
+        fields = ['key', 'device_name', 'created_at', 'expires_at']
+
+
+class AuthResponseSerializer(serializers.Serializer):
+    device_auth_key = serializers.CharField()
+    device_auth_key_expires = serializers.CharField()
+    user = UserSerializer()

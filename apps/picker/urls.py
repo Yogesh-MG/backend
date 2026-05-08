@@ -9,6 +9,7 @@ from .views import (
     PickerHandoverView,
     PickerSetupPinView,
     PickerLoginPinView,
+    PickerVerifyAttendanceView,
     # Shift Management
     PickerShiftStartView,
     PickerShiftEndView,
@@ -29,6 +30,7 @@ urlpatterns = [
     # PIN Authentication
     path('setup-pin/', PickerSetupPinView.as_view(), name='picker_setup_pin'),
     path('login-pin/', PickerLoginPinView.as_view(), name='picker_login_pin'),
+    path('verify-attendance/', PickerVerifyAttendanceView.as_view(), name='picker_verify_attendance'),
     # Shift & Attendance
     path('shift-start/', PickerShiftStartView.as_view(), name='picker_shift_start'),
     path('shift-end/', PickerShiftEndView.as_view(), name='picker_shift_end'),

@@ -9,11 +9,15 @@ from django.contrib.auth import authenticate
 from django.conf import settings
 from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import csrf_exempt
+from django.utils import timezone
 from datetime import timedelta
-from .models import CustomerPreferences, CustomerSettings, User
+from .models import CustomerPreferences, CustomerSettings, User, OtpCode, DeviceAuthKey
 from apps.delivery.models import DeliveryAddress
 from apps.delivery.serializers import DeliveryAddressSerializer
-from .serializers import CustomerPreferencesSerializer, CustomerSettingsSerializer, UserSerializer
+from .serializers import (
+    CustomerPreferencesSerializer, CustomerSettingsSerializer, UserSerializer,
+    SendOtpSerializer, VerifyOtpSerializer, OtpResponseSerializer, AuthResponseSerializer
+)
 
 
 def _set_auth_cookies(response, access_token: str, refresh_token: str, is_app_request: bool = False):
@@ -120,6 +124,8 @@ class CookieTokenObtainView(APIView):
         access_token = str(refresh.access_token)
         refresh_token = str(refresh)
 
+        is_profile_complete = hasattr(user, 'delivery_partner_profile') or user.first_name
+
         response = Response({
             'message': 'Login successful',
             'user': {
@@ -127,6 +133,7 @@ class CookieTokenObtainView(APIView):
                 'username': user.username,
                 'email': user.email,
                 'role': user.role,
+                'is_profile_complete': is_profile_complete,
             },
             'access': access_token,
             'refresh': refresh_token,
@@ -276,3 +283,124 @@ class CustomerProfileDataView(APIView):
             return Response({"detail": "Send address, preferences, or settings to update."}, status=status.HTTP_400_BAD_REQUEST)
 
         return Response(response_data)
+
+
+@method_decorator(csrf_exempt, name='dispatch')
+class SendOtpView(APIView):
+    """Send OTP to a phone number for delivery partner authentication."""
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        serializer = SendOtpSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        phone = serializer.validated_data['phone']
+
+        # Invalidate old OTPs
+        OtpCode.objects.filter(phone_number=phone, is_verified=False).update(is_verified=True)
+
+        # Create new OTP
+        otp = OtpCode.create_otp(phone)
+
+        # In production, integrate with SMS service (Twilio, AWS SNS, etc.)
+        # For now, log it for development
+        print(f"DEBUG: OTP for {phone}: {otp.code}")
+
+        response_data = {
+            'phone': phone,
+            'message': f'OTP sent to {phone}. Valid for 10 minutes.'
+        }
+        serializer = OtpResponseSerializer(response_data)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+
+@method_decorator(csrf_exempt, name='dispatch')
+class VerifyOtpView(APIView):
+    """Verify OTP and issue device auth key for delivery partner."""
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        serializer = VerifyOtpSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        phone = serializer.validated_data['phone']
+        otp_code = serializer.validated_data['otp']
+        device_name = serializer.validated_data.get('device_name', '')
+        device_identifier = serializer.validated_data.get('device_identifier', '')
+
+        # Get the latest OTP for this phone
+        otp = OtpCode.objects.filter(phone_number=phone, is_verified=False).latest('created_at', default=None)
+
+        if not otp:
+            return Response(
+                {'error': 'No OTP found for this phone number'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        if otp.is_expired():
+            return Response(
+                {'error': 'OTP has expired'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        if not otp.is_valid():
+            return Response(
+                {'error': 'OTP is no longer valid or too many attempts'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        if otp.code != otp_code:
+            otp.attempts += 1
+            otp.save(update_fields=['attempts'])
+            return Response(
+                {'error': 'Invalid OTP'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # OTP is valid, mark as verified
+        otp.is_verified = True
+        otp.save(update_fields=['is_verified'])
+
+        # Find or create user with this phone number
+        user = User.objects.filter(phone_number=phone).first()
+
+        if not user:
+            # Create new delivery partner user
+            # Username is phone number, password is generated
+            from django.utils.text import slugify
+            import secrets
+            username_base = f"delivery_{phone}"
+            username = username_base
+            counter = 1
+            while User.objects.filter(username=username).exists():
+                username = f"{username_base}_{counter}"
+                counter += 1
+
+            temp_password = secrets.token_urlsafe(12)
+            user = User.objects.create_user(
+                username=username,
+                phone_number=phone,
+                role='DELIVERY',
+                is_verified=True
+            )
+            user.set_password(temp_password)
+            user.save()
+
+        # Create device auth key
+        device_key = DeviceAuthKey.create_device_key(
+            user=user,
+            device_name=device_name,
+            device_identifier=device_identifier,
+            validity_days=90
+        )
+
+        response_data = {
+            'device_auth_key': device_key.key,
+            'device_auth_key_expires': device_key.expires_at.isoformat(),
+            'user': UserSerializer(user).data
+        }
+
+        response_serializer = AuthResponseSerializer(response_data)
+        return Response(response_serializer.data, status=status.HTTP_200_OK)
