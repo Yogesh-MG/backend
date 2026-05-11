@@ -8,6 +8,7 @@ from .views import (
     FarmerBatchListView,
     FarmerBatchDetailView,
     FarmerPayoutView,
+    FarmerOrderListView,
 )
 
 urlpatterns = [
@@ -18,4 +19,5 @@ urlpatterns = [
     path('batches/', FarmerBatchListView.as_view(), name='farmer_batches'),
     path('batches/<int:batch_id>/', FarmerBatchDetailView.as_view(), name='farmer_batch_detail'),
     path('payouts/', FarmerPayoutView.as_view(), name='farmer_payouts'),
+    path('orders/', FarmerOrderListView.as_view(), name='farmer_orders'),
 ]

@@ -6,23 +6,16 @@ from .models import FarmerMedia, FarmerPayout
 
 
 class FarmerProfileSerializer(serializers.ModelSerializer):
-    """Full farmer profile — extends the accounts.FarmerProfile."""
+    """Full farmer profile, including onboarding persistence fields."""
     name = serializers.SerializerMethodField()
-    latitude = serializers.DecimalField(
-        max_digits=9, decimal_places=6, required=False, write_only=True,
-    )
-    longitude = serializers.DecimalField(
-        max_digits=9, decimal_places=6, required=False, write_only=True,
-    )
-    total_acreage = serializers.DecimalField(
-        max_digits=8, decimal_places=2, required=False, write_only=True,
-    )
 
     class Meta:
         model = FarmerProfile
         fields = [
-            'id', 'name', 'location', 'years_of_experience', 'rating',
+            'id', 'name', 'farm_name', 'location', 'years_of_experience', 'rating',
             'speciality', 'bio', 'image', 'latitude', 'longitude', 'total_acreage',
+            'crops', 'organic_pledge_accepted', 'organic_pledge_signature',
+            'organic_pledge_accepted_at',
         ]
         read_only_fields = ['id', 'rating']
 
@@ -31,9 +24,15 @@ class FarmerProfileSerializer(serializers.ModelSerializer):
 
 
 class FarmerBatchSerializer(serializers.ModelSerializer):
-    """Farmer-facing batch view — includes computed status field."""
+    """Farmer-facing batch view with frontend-friendly aliases."""
     product_name = serializers.CharField(source='variant.product.name', read_only=True)
     product_id = serializers.IntegerField(source='variant.product.id', read_only=True)
+    category = serializers.CharField(source='variant.product.category.name', read_only=True)
+    unit = serializers.CharField(source='variant.unit', read_only=True)
+    stock = serializers.DecimalField(source='stock_level', max_digits=10, decimal_places=3, read_only=True)
+    quantity = serializers.DecimalField(source='stock_level', max_digits=10, decimal_places=3, read_only=True)
+    price_per_unit = serializers.DecimalField(source='price', max_digits=10, decimal_places=2, read_only=True)
+    image = serializers.ImageField(source='variant.product.base_image', read_only=True)
     is_organic = serializers.BooleanField()
     status = serializers.SerializerMethodField()
 
@@ -41,22 +40,23 @@ class FarmerBatchSerializer(serializers.ModelSerializer):
         model = InventoryBatch
         fields = [
             'id', 'product_id', 'product_name', 'price', 'mrp',
-            'stock_level', 'harvest_date', 'is_organic', 'status',
+            'stock_level', 'stock', 'quantity', 'price_per_unit', 'category',
+            'unit', 'image', 'harvest_date', 'is_organic', 'status',
         ]
 
     def get_status(self, obj):
         if obj.stock_level == 0:
             return "Out of Stock"
-        # Could add admin approval logic here
         return "Live"
 
 
 class FarmerAddBatchSerializer(serializers.Serializer):
     """Input serializer for adding a new batch."""
-    product_id = serializers.IntegerField()
+    product_id = serializers.IntegerField(required=False, default=0)
+    custom_product_name = serializers.CharField(max_length=255, required=False, default='')
     price = serializers.DecimalField(max_digits=10, decimal_places=2)
     mrp = serializers.DecimalField(max_digits=10, decimal_places=2, required=False)
-    stock_level = serializers.IntegerField(min_value=0)
+    stock_level = serializers.DecimalField(max_digits=10, decimal_places=3, min_value=0)
     harvest_date = serializers.DateTimeField()
     is_organic = serializers.BooleanField(default=False)
 
@@ -64,7 +64,10 @@ class FarmerAddBatchSerializer(serializers.Serializer):
 class FarmerDashboardSerializer(serializers.Serializer):
     """Aggregated dashboard metrics for the farmer."""
     total_earnings = serializers.FloatField()
+    total_sales = serializers.FloatField()
+    lifetime_earnings = serializers.FloatField()
     current_month_earnings = serializers.FloatField()
+    monthly_earnings = serializers.FloatField()
     total_products = serializers.IntegerField()
     live_products = serializers.IntegerField()
     avg_rating = serializers.FloatField()

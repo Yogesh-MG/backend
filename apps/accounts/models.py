@@ -108,12 +108,20 @@ class DeviceAuthKey(models.Model):
 
 class FarmerProfile(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='farmer_profile')
+    farm_name = models.CharField(max_length=255, blank=True)
     location = models.CharField(max_length=255)
     years_of_experience = models.PositiveIntegerField(default=0)
     rating = models.DecimalField(max_digits=3, decimal_places=2, default=5.0)
     speciality = models.CharField(max_length=255, help_text="e.g. Leafy greens & herbs")
     bio = models.TextField(blank=True)
     image = models.ImageField(upload_to='farmers/', null=True, blank=True)
+    latitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
+    longitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
+    total_acreage = models.DecimalField(max_digits=8, decimal_places=2, null=True, blank=True)
+    crops = models.JSONField(default=list, blank=True)
+    organic_pledge_accepted = models.BooleanField(default=False)
+    organic_pledge_signature = models.CharField(max_length=255, blank=True)
+    organic_pledge_accepted_at = models.DateTimeField(null=True, blank=True)
 
     def __str__(self):
         return f"Farmer: {self.user.get_full_name() or self.user.username}"

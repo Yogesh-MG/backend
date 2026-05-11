@@ -29,7 +29,7 @@ from rest_framework_simplejwt.tokens import RefreshToken
 
 from apps.accounts.models import User, FarmerProfile
 from apps.inventory.models import InventoryBatch, Product, ProductVariant
-from apps.orders.models import OrderItem
+from apps.orders.models import Order, OrderItem
 from .models import FarmerMedia, FarmerPayout, FarmerOTP
 from .serializers import (
     FarmerProfileSerializer, FarmerBatchSerializer,
@@ -113,9 +113,16 @@ class FarmerRegisterView(APIView):
             user.save()
 
         # Ensure farmer profile exists
-        FarmerProfile.objects.get_or_create(
+        profile, _ = FarmerProfile.objects.get_or_create(
             user=user,
             defaults={'location': '', 'speciality': ''},
+        )
+
+        # Determine if profile onboarding is complete
+        profile_complete = bool(
+            user.get_full_name().strip()
+            and getattr(profile, 'total_acreage', None)
+            and getattr(profile, 'organic_pledge_accepted', False)
         )
 
         refresh = RefreshToken.for_user(user)
@@ -124,8 +131,11 @@ class FarmerRegisterView(APIView):
 
         response = Response({
             'message': 'Farmer registered successfully' if created else 'Welcome back!',
+            'is_new_user': created,
+            'profile_complete': profile_complete,
             'user': {
                 'id': user.id, 'username': user.username,
+                'name': user.get_full_name() or user.username,
                 'email': user.email, 'role': user.role,
                 'is_verified': user.is_verified,
             },
@@ -185,6 +195,9 @@ class FarmerMediaUploadView(APIView):
         except FarmerProfile.DoesNotExist:
             return Response({'error': 'Farmer profile not found'}, status=status.HTTP_404_NOT_FOUND)
         media = FarmerMedia.objects.create(farmer=profile, type=media_type, file=file)
+        if media_type == 'profile_photo':
+            profile.image = file
+            profile.save(update_fields=['image'])
         url = request.build_absolute_uri(media.file.url) if media.file else ''
         return Response({'url': url, 'type': media_type})
 
@@ -213,11 +226,13 @@ class FarmerDashboardView(APIView):
         monthly_items = sold_items.filter(order__created_at__gte=month_ago)
         weekly_items = sold_items.filter(order__created_at__gte=week_ago)
 
+        monthly_total = float(monthly_items.aggregate(t=Sum('price'))['t'] or 0)
         return Response({
             'total_earnings': float(total_revenue),
-            'current_month_earnings': float(
-                monthly_items.aggregate(t=Sum('price'))['t'] or 0
-            ),
+            'total_sales': float(total_revenue),
+            'lifetime_earnings': float(total_revenue),
+            'current_month_earnings': monthly_total,
+            'monthly_earnings': monthly_total,
             'total_products': batches.count(),
             'live_products': batches.filter(stock_level__gt=0).count(),
             'avg_rating': float(profile.rating),
@@ -255,10 +270,31 @@ class FarmerBatchListView(APIView):
             profile = request.user.farmer_profile
         except FarmerProfile.DoesNotExist:
             return Response({'error': 'Farmer profile not found'}, status=status.HTTP_404_NOT_FOUND)
-        try:
-            product = Product.objects.get(id=data['product_id'])
-        except Product.DoesNotExist:
-            return Response({'error': 'Product not found'}, status=status.HTTP_404_NOT_FOUND)
+
+        custom_name = request.data.get('custom_product_name', '').strip()
+        product_id = data.get('product_id', 0)
+
+        if custom_name and (not product_id or product_id == 0):
+            # Farmer-suggested custom product — find or create
+            from apps.inventory.models import Category
+            default_category = Category.objects.first()
+            if not default_category:
+                return Response({'error': 'No product categories configured'}, status=status.HTTP_400_BAD_REQUEST)
+            product, _ = Product.objects.get_or_create(
+                name__iexact=custom_name,
+                defaults={
+                    'name': custom_name.title(),
+                    'category': default_category,
+                    'description': f'Custom product added by farmer {profile.user.get_full_name()}',
+                    'storage_instructions': 'Store in a cool, dry place.',
+                },
+            )
+        else:
+            try:
+                product = Product.objects.get(id=product_id)
+            except Product.DoesNotExist:
+                return Response({'error': 'Product not found'}, status=status.HTTP_404_NOT_FOUND)
+
         # Get or create a default variant
         variant = product.variants.first()
         if not variant:
@@ -309,3 +345,47 @@ class FarmerPayoutView(APIView):
         payouts = FarmerPayout.objects.filter(farmer=profile)
         serializer = FarmerPayoutSerializer(payouts, many=True)
         return Response(serializer.data)
+
+
+@method_decorator(csrf_exempt, name='dispatch')
+class FarmerOrderListView(APIView):
+    """GET /api/farmer/orders/ - Orders containing this farmer's batches."""
+    permission_classes = [IsFarmerUser]
+
+    def get(self, request):
+        try:
+            profile = request.user.farmer_profile
+        except FarmerProfile.DoesNotExist:
+            return Response([], status=status.HTTP_200_OK)
+
+        orders = (
+            Order.objects.filter(items__batch__farmer=profile)
+            .prefetch_related('items')
+            .select_related('user')
+            .distinct()
+            .order_by('-created_at')[:50]
+        )
+
+        data = []
+        for order in orders:
+            farmer_items = [item for item in order.items.all() if item.batch and item.batch.farmer_id == profile.id]
+            data.append({
+                'id': order.id,
+                'tracking_id': order.tracking_id,
+                'customer_name': order.user.get_full_name() or order.user.username,
+                'status': order.status,
+                'total': float(sum(item.price * item.quantity for item in farmer_items)),
+                'created_at': order.created_at,
+                'items': [
+                    {
+                        'product_name': item.product_name,
+                        'quantity': item.quantity,
+                        'unit': item.unit,
+                        'price': float(item.price),
+                        'total': float(item.price * item.quantity),
+                    }
+                    for item in farmer_items
+                ],
+            })
+
+        return Response(data)
