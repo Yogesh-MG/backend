@@ -80,7 +80,7 @@ class PosTransactionSerializer(serializers.ModelSerializer):
     """Full POS transaction output — matches SDK PosTransaction type."""
     items = PosTransactionItemSerializer(many=True, read_only=True)
     tenders = PosTenderOutputSerializer(many=True, read_only=True)
-    customer_id = serializers.CharField(source='customer_id', default='')
+    customer_id = serializers.CharField(default='')
     timestamp = serializers.SerializerMethodField()
 
     class Meta:
