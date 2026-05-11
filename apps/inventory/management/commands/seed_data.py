@@ -4,6 +4,9 @@ from django.core.management.base import BaseCommand
 from django.utils import timezone
 from apps.accounts.models import User, FarmerProfile
 from apps.inventory.models import Category, SubCategory, Product, InventoryBatch, ProductBenefit, ProductVariant
+from apps.delivery_partner.models import DeliveryPartnerProfile
+from apps.picker.models import PickerProfile, Hub
+from apps.pos.models import PosEmployee
 
 try:
     import openpyxl
@@ -13,6 +16,75 @@ except ImportError:
 
 class Command(BaseCommand):
     help = 'Seeds the database with real products from FreshOn_Product_Categories_v3.xlsx or fallback dummy data'
+
+    def create_users(self):
+        self.stdout.write("Creating Farmers...")
+        farmers_data = [
+            {"username": "lakshmi", "name": "Lakshmi Devi", "loc": "Mysuru", "img": "https://images.unsplash.com/photo-1544005313-94ddf0286df2"},
+            {"username": "ramesh", "name": "Ramesh Patil", "loc": "Nashik", "img": "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d"},
+            {"username": "anita", "name": "Anita Sharma", "loc": "Mahabaleshwar", "img": "https://images.unsplash.com/photo-1438761681033-6461ffad8d80"},
+            {"username": "gurpreet", "name": "Gurpreet Singh", "loc": "Amritsar", "img": "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e"},
+            {"username": "venkat", "name": "Venkat Raman", "loc": "Salem", "img": "https://images.unsplash.com/photo-1500648767791-00dcc994a43e"},
+        ]
+        farmer_profiles = []
+        for f in farmers_data:
+            user, _ = User.objects.get_or_create(username=f['username'], defaults={"role": User.Role.FARMER})
+            user.first_name = f['name'].split()[0]
+            user.last_name = f['name'].split()[1] if len(f['name'].split()) > 1 else ""
+            user.set_password("freshon123")
+            user.save()
+            profile, _ = FarmerProfile.objects.get_or_create(user=user, defaults={"location": f['loc'], "rating": 4.9})
+            profile.image = f['img']
+            profile.save()
+            farmer_profiles.append(profile)
+
+        self.stdout.write("Creating Hubs and Pickers...")
+        hub, _ = Hub.objects.get_or_create(name="FreshOn Main Hub", defaults={"latitude": 12.9716, "longitude": 77.5946})
+        
+        pickers_data = [
+            {"username": "picker1", "name": "Rahul Picker", "pin": "123456"},
+            {"username": "picker2", "name": "Suresh Picker", "pin": "654321"},
+        ]
+        for p in pickers_data:
+            user, _ = User.objects.get_or_create(username=p['username'], defaults={"role": User.Role.PICKER})
+            user.set_password("freshon123")
+            user.save()
+            PickerProfile.objects.get_or_create(user=user, defaults={"hub": hub, "pin": p['pin'], "hub_name": hub.name})
+
+        self.stdout.write("Creating Delivery Partners...")
+        delivery_data = [
+            {"username": "driver1", "name": "Deepak Driver", "vehicle": "BIKE", "number": "KA-01-EF-1234"},
+            {"username": "driver2", "name": "Arjun Driver", "vehicle": "SCOOTER", "number": "KA-02-GH-5678"},
+        ]
+        for d in delivery_data:
+            user, _ = User.objects.get_or_create(username=d['username'], defaults={"role": User.Role.DELIVERY})
+            user.set_password("freshon123")
+            user.save()
+            DeliveryPartnerProfile.objects.get_or_create(user=user, defaults={"vehicle_type": d['vehicle'], "vehicle_number": d['number'], "is_online": True})
+
+        self.stdout.write("Creating POS Operators...")
+        pos_data = [
+            {"username": "pos1", "name": "Priya POS", "emp_id": "EMP-001", "pin": "112233"},
+            {"username": "pos2", "name": "Kiran POS", "emp_id": "EMP-002", "pin": "445566"},
+        ]
+        for pos in pos_data:
+            user, _ = User.objects.get_or_create(username=pos['username'], defaults={"role": User.Role.POS_OPERATOR})
+            user.set_password("freshon123")
+            user.save()
+            PosEmployee.objects.get_or_create(user=user, defaults={"employee_id": pos['emp_id'], "pin": pos['pin']})
+
+        self.stdout.write("Creating Customers and Admins...")
+        # Create a default customer
+        customer_user, _ = User.objects.get_or_create(username="customer", defaults={"role": User.Role.CUSTOMER})
+        customer_user.set_password("freshon123")
+        customer_user.save()
+        
+        # Create a default admin
+        admin_user, _ = User.objects.get_or_create(username="admin", defaults={"role": User.Role.ADMIN, "is_staff": True, "is_superuser": True})
+        admin_user.set_password("freshon123")
+        admin_user.save()
+        
+        return farmer_profiles
 
     def handle(self, *args, **kwargs):
         self.stdout.write("Cleaning old data...")
@@ -210,6 +282,10 @@ class Command(BaseCommand):
             }
         }
 
+                ]
+            }
+        }
+
         created_categories = {}
         created_subcategories = {}
 
@@ -230,25 +306,7 @@ class Command(BaseCommand):
                 )
                 created_subcategories[f"{cat_name}_{sub['name']}"] = s
 
-        self.stdout.write("Creating Farmers...")
-        farmers_data = [
-            {"username": "lakshmi", "name": "Lakshmi Devi", "loc": "Mysuru", "img": "https://images.unsplash.com/photo-1544005313-94ddf0286df2"},
-            {"username": "ramesh", "name": "Ramesh Patil", "loc": "Nashik", "img": "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d"},
-            {"username": "anita", "name": "Anita Sharma", "loc": "Mahabaleshwar", "img": "https://images.unsplash.com/photo-1438761681033-6461ffad8d80"},
-            {"username": "gurpreet", "name": "Gurpreet Singh", "loc": "Amritsar", "img": "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e"},
-            {"username": "venkat", "name": "Venkat Raman", "loc": "Salem", "img": "https://images.unsplash.com/photo-1500648767791-00dcc994a43e"},
-        ]
-        farmer_profiles = []
-        for f in farmers_data:
-            user, _ = User.objects.get_or_create(username=f['username'], defaults={"role": User.Role.FARMER})
-            user.first_name = f['name'].split()[0]
-            user.last_name = f['name'].split()[1] if len(f['name'].split()) > 1 else ""
-            user.set_password("freshon123")
-            user.save()
-            profile, _ = FarmerProfile.objects.get_or_create(user=user, defaults={"location": f['loc'], "rating": 4.9})
-            profile.image = f['img']
-            profile.save()
-            farmer_profiles.append(profile)
+        farmer_profiles = self.create_users()
 
         self.stdout.write("Seeding 200+ Products with variants...")
         
@@ -351,25 +409,7 @@ class Command(BaseCommand):
             self.stdout.write(self.style.ERROR(f"Error loading Excel: {e}. Falling back to dummy data..."))
             return False
 
-        self.stdout.write("Creating Farmers...")
-        farmers_data = [
-            {"username": "lakshmi", "name": "Lakshmi Devi", "loc": "Mysuru", "img": "https://images.unsplash.com/photo-1544005313-94ddf0286df2"},
-            {"username": "ramesh", "name": "Ramesh Patil", "loc": "Nashik", "img": "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d"},
-            {"username": "anita", "name": "Anita Sharma", "loc": "Mahabaleshwar", "img": "https://images.unsplash.com/photo-1438761681033-6461ffad8d80"},
-            {"username": "gurpreet", "name": "Gurpreet Singh", "loc": "Amritsar", "img": "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e"},
-            {"username": "venkat", "name": "Venkat Raman", "loc": "Salem", "img": "https://images.unsplash.com/photo-1500648767791-00dcc994a43e"},
-        ]
-        farmer_profiles = []
-        for f in farmers_data:
-            user, _ = User.objects.get_or_create(username=f['username'], defaults={"role": User.Role.FARMER})
-            user.first_name = f['name'].split()[0]
-            user.last_name = f['name'].split()[1] if len(f['name'].split()) > 1 else ""
-            user.set_password("freshon123")
-            user.save()
-            profile, _ = FarmerProfile.objects.get_or_create(user=user, defaults={"location": f['loc'], "rating": 4.9})
-            profile.image = f['img']
-            profile.save()
-            farmer_profiles.append(profile)
+        farmer_profiles = self.create_users()
 
         self.stdout.write("Seeding products from Excel...")
         
