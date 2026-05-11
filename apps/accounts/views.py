@@ -331,7 +331,7 @@ class VerifyOtpView(APIView):
         device_identifier = serializer.validated_data.get('device_identifier', '')
 
         # Get the latest OTP for this phone
-        otp = OtpCode.objects.filter(phone_number=phone, is_verified=False).latest('created_at', default=None)
+        otp = OtpCode.objects.filter(phone_number=phone, is_verified=False).order_by('-created_at').first()
 
         if not otp:
             return Response(
