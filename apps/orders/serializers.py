@@ -58,11 +58,16 @@ class OrderCreateSerializer(serializers.ModelSerializer):
             total = subtotal + delivery_fee
 
             # 3. Create the Order with calculated values
+            # All successful orders are confirmed automatically
+            is_paid = validated_data.get('is_paid', False)
+            
             order = Order.objects.create(
                 user=user,
                 subtotal=subtotal,
                 delivery_fee=delivery_fee,
                 total=total,
+                status='CONFIRMED',
+                payment_status='COMPLETED' if is_paid else 'PENDING',
                 **validated_data
             )
 
