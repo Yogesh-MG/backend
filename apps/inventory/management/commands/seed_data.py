@@ -282,10 +282,6 @@ class Command(BaseCommand):
             }
         }
 
-                ]
-            }
-        }
-
         created_categories = {}
         created_subcategories = {}
 
