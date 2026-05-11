@@ -24,6 +24,7 @@ class PosEmployee(models.Model):
     employee_id = models.CharField(max_length=20, unique=True, help_text="e.g. EMP-001")
     pin = models.CharField(max_length=6, help_text="Numeric PIN for quick terminal login")
     is_active = models.BooleanField(default=True)
+    is_manager = models.BooleanField(default=False, help_text="Can authorize refunds and returns")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -106,7 +107,12 @@ class PosShift(models.Model):
 
 
 class PosTransaction(models.Model):
-    """A completed point-of-sale transaction."""
+    """A completed point-of-sale transaction (sale or return)."""
+    TRANSACTION_TYPES = [
+        ('SALE', 'Sale'),
+        ('RETURN', 'Return'),
+    ]
+
     PAYMENT_METHODS = [
         ('Cash', 'Cash'),
         ('UPI', 'UPI'),
@@ -133,6 +139,17 @@ class PosTransaction(models.Model):
         null=True,
         blank=True,
         related_name='transactions',
+    )
+    transaction_type = models.CharField(
+        max_length=10, choices=TRANSACTION_TYPES, default='SALE',
+    )
+    related_transaction = models.ForeignKey(
+        'self',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='returns',
+        help_text='For RETURN type: links to the original SALE transaction',
     )
     method = models.CharField(max_length=20, choices=PAYMENT_METHODS, default='Cash')
     subtotal = models.DecimalField(max_digits=10, decimal_places=2)

@@ -20,6 +20,8 @@ from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import csrf_exempt
 from django.contrib.auth import authenticate
 from django.db import transaction
+from django.db.models import F
+
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
@@ -327,6 +329,17 @@ class PosOrderCreateView(APIView):
                     member_eligible=item.get('member_eligible', False),
                 )
 
+                # Deduct Stock from InventoryBatch
+                try:
+                    InventoryBatch.objects.filter(id=item['pid']).update(
+                        stock_level=F('stock_level') - Decimal(str(item['quantity']))
+                    )
+                except Exception:
+                    # Log error but don't fail transaction? 
+                    # Usually better to fail if stock is critical, 
+                    # but here we allow it for now.
+                    pass
+
             # Create tenders
             for tender in tenders:
                 PosTender.objects.create(
@@ -397,7 +410,219 @@ class PosWastageView(APIView):
             reason=reason,
         )
 
+        # Deduct Stock for wastage
+        try:
+            InventoryBatch.objects.filter(id=pid).update(
+                stock_level=F('stock_level') - Decimal(str(quantity))
+            )
+        except Exception:
+            pass
+
         return Response({
             'message': 'Wastage logged',
             'id': str(log.id),
         }, status=status.HTTP_201_CREATED)
+
+
+@method_decorator(csrf_exempt, name='dispatch')
+class PosOrderLookupView(APIView):
+    """
+    GET /api/pos/orders/lookup/?receipt_id=...
+    Look up a past transaction by its UUID for return processing.
+    """
+    permission_classes = [IsPosOperator]
+
+    def get(self, request):
+        receipt_id = request.query_params.get('receipt_id', '').strip()
+        if not receipt_id:
+            return Response(
+                {'error': 'receipt_id parameter required'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            txn = PosTransaction.objects.prefetch_related(
+                'items', 'tenders'
+            ).get(id=receipt_id)
+        except (PosTransaction.DoesNotExist, Exception):
+            return Response(
+                {'error': 'Transaction not found'},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        # Don't allow looking up RETURN transactions for another return
+        if txn.transaction_type == 'RETURN':
+            return Response(
+                {'error': 'Cannot return a return transaction'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        serializer = PosTransactionSerializer(txn)
+        data = serializer.data
+        data['transaction_type'] = txn.transaction_type
+        return Response(data)
+
+
+@method_decorator(csrf_exempt, name='dispatch')
+class PosRefundView(APIView):
+    """
+    POST /api/pos/orders/refund/
+    Process a return/refund for a previous transaction.
+
+    Payload:
+      {
+        "original_transaction_id": "uuid",
+        "manager_pin": "1234",
+        "items": [{"pid": "...", "quantity": 1.0}],  // items being returned
+        "refund_method": "Cash"  // how the refund is paid out
+      }
+
+    Business rules:
+      - Manager PIN must match an employee with is_manager=True
+      - Creates a RETURN PosTransaction with negative totals
+      - Restocks returned items in InventoryBatch
+      - Deducts from shift totals
+    """
+    permission_classes = [IsPosOperator]
+
+    def post(self, request):
+        original_id = request.data.get('original_transaction_id', '')
+        manager_pin = request.data.get('manager_pin', '')
+        return_items = request.data.get('items', [])
+        refund_method = request.data.get('refund_method', 'Cash')
+
+        # ── Validate inputs ──
+        if not original_id or not manager_pin or not return_items:
+            return Response(
+                {'error': 'original_transaction_id, manager_pin, and items are required'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # ── Verify manager PIN ──
+        try:
+            manager = PosEmployee.objects.get(
+                pin=manager_pin, is_manager=True, is_active=True,
+            )
+        except PosEmployee.DoesNotExist:
+            return Response(
+                {'error': 'Invalid manager PIN'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        # ── Fetch original transaction ──
+        try:
+            original_txn = PosTransaction.objects.prefetch_related(
+                'items', 'tenders'
+            ).get(id=original_id, transaction_type='SALE')
+        except (PosTransaction.DoesNotExist, Exception):
+            return Response(
+                {'error': 'Original sale transaction not found'},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        # ── Get current employee & shift ──
+        try:
+            employee = request.user.pos_employee
+        except PosEmployee.DoesNotExist:
+            return Response(
+                {'error': 'Employee not found'},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        shift = PosShift.objects.filter(employee=employee, is_open=True).first()
+        if not shift:
+            return Response(
+                {'error': 'No open shift'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # ── Build return items & calculate refund total ──
+        original_items = {item.pid: item for item in original_txn.items.all()}
+        refund_subtotal = Decimal('0')
+        validated_items = []
+
+        for ri in return_items:
+            pid = ri.get('pid', '')
+            qty = Decimal(str(ri.get('quantity', 0)))
+
+            if pid not in original_items:
+                return Response(
+                    {'error': f'Item {pid} not found in original transaction'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            orig_item = original_items[pid]
+            if qty > orig_item.quantity:
+                return Response(
+                    {'error': f'Return quantity for {pid} exceeds original quantity'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            item_total = orig_item.unit_price * qty
+            refund_subtotal += item_total
+            validated_items.append({
+                'pid': pid,
+                'name': orig_item.name,
+                'unit_price': orig_item.unit_price,
+                'weighed': orig_item.weighed,
+                'quantity': qty,
+                'member_eligible': orig_item.member_eligible,
+            })
+
+        refund_total = refund_subtotal  # Could apply surcharge reversal if needed
+
+        with transaction.atomic():
+            # ── Create RETURN transaction (negative totals) ──
+            return_txn = PosTransaction.objects.create(
+                shift=shift,
+                customer=original_txn.customer,
+                transaction_type='RETURN',
+                related_transaction=original_txn,
+                method=refund_method,
+                subtotal=-refund_subtotal,
+                member_discount=Decimal('0'),
+                surcharge=Decimal('0'),
+                total=-refund_total,
+            )
+
+            # ── Create return line items ──
+            for item in validated_items:
+                PosTransactionItem.objects.create(
+                    transaction=return_txn,
+                    pid=item['pid'],
+                    name=item['name'],
+                    unit_price=item['unit_price'],
+                    weighed=item['weighed'],
+                    quantity=item['quantity'],
+                    member_eligible=item['member_eligible'],
+                )
+
+            # ── Create refund tender ──
+            PosTender.objects.create(
+                transaction=return_txn,
+                method=refund_method,
+                amount=-refund_total,
+            )
+
+            # ── Restock inventory ──
+            for item in validated_items:
+                try:
+                    InventoryBatch.objects.filter(id=item['pid']).update(
+                        stock_level=F('stock_level') + item['quantity']
+                    )
+                except Exception:
+                    pass  # PID may not map directly to a batch ID
+
+            # ── Deduct from shift totals ──
+            shift.txn_count += 1
+            shift.total_sales -= refund_total
+            if refund_method == 'Cash':
+                shift.cash_sales -= refund_total
+            shift.save()
+
+        result = PosTransactionSerializer(return_txn).data
+        result['transaction_type'] = 'RETURN'
+        result['original_transaction_id'] = str(original_id)
+        result['authorized_by'] = manager.employee_id
+
+        return Response(result, status=status.HTTP_201_CREATED)

@@ -9,6 +9,8 @@ from .views import (
     PosCustomerLookupView,
     PosCustomerCreateView,
     PosOrderCreateView,
+    PosOrderLookupView,
+    PosRefundView,
     PosWastageView,
 )
 
@@ -20,6 +22,8 @@ urlpatterns = [
     path('products/', PosProductsView.as_view(), name='pos_products'),
     path('customers/lookup/', PosCustomerLookupView.as_view(), name='pos_customer_lookup'),
     path('customers/', PosCustomerCreateView.as_view(), name='pos_customer_create'),
+    path('orders/lookup/', PosOrderLookupView.as_view(), name='pos_order_lookup'),
+    path('orders/refund/', PosRefundView.as_view(), name='pos_order_refund'),
     path('orders/', PosOrderCreateView.as_view(), name='pos_order_create'),
     path('wastage/', PosWastageView.as_view(), name='pos_wastage'),
 ]

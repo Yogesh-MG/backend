@@ -55,7 +55,7 @@ class InventoryBatch(models.Model):
     
     price = models.DecimalField(max_digits=10, decimal_places=2)
     mrp = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
-    stock_level = models.PositiveIntegerField(default=0)
+    stock_level = models.DecimalField(max_digits=10, decimal_places=3, default=0)
     
     harvest_date = models.DateTimeField()
     expiry_date = models.DateTimeField(null=True, blank=True)

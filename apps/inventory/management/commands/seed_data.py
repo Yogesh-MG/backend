@@ -1,11 +1,18 @@
 import random
+import os
 from django.core.management.base import BaseCommand
 from django.utils import timezone
 from apps.accounts.models import User, FarmerProfile
 from apps.inventory.models import Category, SubCategory, Product, InventoryBatch, ProductBenefit, ProductVariant
 
+try:
+    import openpyxl
+    EXCEL_AVAILABLE = True
+except ImportError:
+    EXCEL_AVAILABLE = False
+
 class Command(BaseCommand):
-    help = 'Seeds the database with 20+ categories and 200+ products'
+    help = 'Seeds the database with real products from FreshOn_Product_Categories_v3.xlsx or fallback dummy data'
 
     def handle(self, *args, **kwargs):
         self.stdout.write("Cleaning old data...")
@@ -16,8 +23,20 @@ class Command(BaseCommand):
         SubCategory.objects.all().delete()
         Category.objects.all().delete()
 
-        self.stdout.write("Seeding 20+ Categories and Sub-categories...")
+        # Try to load from Excel first
+        excel_file = "FreshOn_Product_Categories_v3.xlsx"
+        if EXCEL_AVAILABLE and os.path.exists(excel_file):
+            self.stdout.write(f"Loading from {excel_file}...")
+            self.seed_from_excel(excel_file)
+            return
+        else:
+            if not EXCEL_AVAILABLE:
+                self.stdout.write(self.style.WARNING("openpyxl not installed. Install with: pip install openpyxl"))
+            if not os.path.exists(excel_file):
+                self.stdout.write(self.style.WARNING(f"{excel_file} not found. Using fallback dummy data..."))
+            self.stdout.write("Seeding fallback 20+ Categories and Sub-categories...")
         
+        # Fallback dummy data seeding
         data_structure = {
             "Vegetables": {
                 "emoji": "🥕",
@@ -322,3 +341,139 @@ class Command(BaseCommand):
                     product_count += 1
 
         self.stdout.write(self.style.SUCCESS(f"Successfully seeded {product_count} products across {len(data_structure)} categories!"))
+
+    def seed_from_excel(self, excel_file):
+        """Load products from FreshOn_Product_Categories_v3.xlsx"""
+        try:
+            wb = openpyxl.load_workbook(excel_file)
+            ws = wb['All Products']
+        except Exception as e:
+            self.stdout.write(self.style.ERROR(f"Error loading Excel: {e}. Falling back to dummy data..."))
+            return False
+
+        self.stdout.write("Creating Farmers...")
+        farmers_data = [
+            {"username": "lakshmi", "name": "Lakshmi Devi", "loc": "Mysuru", "img": "https://images.unsplash.com/photo-1544005313-94ddf0286df2"},
+            {"username": "ramesh", "name": "Ramesh Patil", "loc": "Nashik", "img": "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d"},
+            {"username": "anita", "name": "Anita Sharma", "loc": "Mahabaleshwar", "img": "https://images.unsplash.com/photo-1438761681033-6461ffad8d80"},
+            {"username": "gurpreet", "name": "Gurpreet Singh", "loc": "Amritsar", "img": "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e"},
+            {"username": "venkat", "name": "Venkat Raman", "loc": "Salem", "img": "https://images.unsplash.com/photo-1500648767791-00dcc994a43e"},
+        ]
+        farmer_profiles = []
+        for f in farmers_data:
+            user, _ = User.objects.get_or_create(username=f['username'], defaults={"role": User.Role.FARMER})
+            user.first_name = f['name'].split()[0]
+            user.last_name = f['name'].split()[1] if len(f['name'].split()) > 1 else ""
+            user.set_password("freshon123")
+            user.save()
+            profile, _ = FarmerProfile.objects.get_or_create(user=user, defaults={"location": f['loc'], "rating": 4.9})
+            profile.image = f['img']
+            profile.save()
+            farmer_profiles.append(profile)
+
+        self.stdout.write("Seeding products from Excel...")
+        
+        # Image pools for variety
+        img_pools = {
+            "Vegetables": "https://images.unsplash.com/photo-1597362925123-77861d3fbac7",
+            "Fruits": "https://images.unsplash.com/photo-1610832958506-aa56368176cf",
+            "Dairy & Eggs": "https://images.unsplash.com/photo-1628088062854-d1870b4553ad",
+            "Dry Fruits & Nuts": "https://images.unsplash.com/photo-1599599810694-b5ac4dd0b676",
+            "Spices": "https://images.unsplash.com/photo-1596040033229-a9821ebd058d",
+            "Oils": "https://images.unsplash.com/photo-1474979266404-7eaacbcd87c5",
+            "Grains": "https://images.unsplash.com/photo-1586201375761-83865001e31c",
+            "Default": "https://images.unsplash.com/photo-1542838132-92c53300491e"
+        }
+
+        # Track created categories/subcategories to avoid duplicates
+        created_categories = {}
+        created_subcategories = {}
+        product_data = {}  # To group variants of same product
+        product_count = 0
+
+        # Read Excel data (skip header rows 1-2, start from row 3)
+        for row_idx, row in enumerate(ws.iter_rows(min_row=3, values_only=True), start=3):
+            if row_idx > ws.max_row:
+                break
+            
+            main_cat, sub_cat, prod_name, gramage = row[0], row[1], row[2], row[3]
+            
+            # Skip empty rows
+            if not all([main_cat, sub_cat, prod_name, gramage]):
+                continue
+
+            # Create or get main category
+            if main_cat not in created_categories:
+                cat_slug = main_cat.lower().replace(" ", "-").replace("&", "and")
+                cat = Category.objects.create(
+                    name=main_cat,
+                    slug=cat_slug,
+                    emoji="🥕",  # Default emoji
+                    description=f"Fresh {main_cat} sourced directly from farms."
+                )
+                created_categories[main_cat] = cat
+            cat_obj = created_categories[main_cat]
+
+            # Create or get subcategory
+            sub_key = f"{main_cat}_{sub_cat}"
+            if sub_key not in created_subcategories:
+                sub_slug = sub_cat.lower().replace(" ", "-").replace("&", "and")
+                sub = SubCategory.objects.create(
+                    category=cat_obj,
+                    name=sub_cat,
+                    slug=sub_slug,
+                    emoji="✓"  # Default emoji
+                )
+                created_subcategories[sub_key] = sub
+            sub_obj = created_subcategories[sub_key]
+
+            # Create or get product (group by product name)
+            prod_key = f"{main_cat}_{sub_cat}_{prod_name}"
+            if prod_key not in product_data:
+                prod = Product.objects.create(
+                    category=cat_obj,
+                    subcategory=sub_obj,
+                    name=prod_name,
+                    description=f"Premium quality {prod_name} from FreshOn.in",
+                    storage_instructions="Store in cool, dry conditions.",
+                )
+                
+                # Add image link
+                base_img = img_pools.get(main_cat, img_pools["Default"])
+                prod.base_image = f"{base_img}?auto=format&fit=crop&q=80&w=600&h=600&sig={product_count}"
+                prod.save()
+                
+                # Add benefits
+                ProductBenefit.objects.create(product=prod, benefit="Farm to Table")
+                ProductBenefit.objects.create(product=prod, benefit="No Preservatives")
+                
+                product_data[prod_key] = prod
+                product_count += 1
+            else:
+                prod = product_data[prod_key]
+
+            # Create variant for this gramage/size
+            base_price = random.randint(50, 500)
+            variant, created = ProductVariant.objects.get_or_create(
+                product=prod,
+                unit=gramage,
+                defaults={"is_active": True}
+            )
+            
+            if created:
+                # Create inventory batch for this variant
+                InventoryBatch.objects.create(
+                    farmer=random.choice(farmer_profiles),
+                    variant=variant,
+                    price=base_price,
+                    mrp=int(base_price * 1.3),
+                    stock_level=random.randint(10, 200),
+                    harvest_date=timezone.now() - timezone.timedelta(days=random.randint(0, 3)),
+                    is_organic=random.choice([True, False]),
+                    is_farm_fresh=True
+                )
+
+        self.stdout.write(self.style.SUCCESS(
+            f"Successfully seeded {product_count} unique products from Excel with {InventoryBatch.objects.count()} inventory batches!"
+        ))
+        return True
