@@ -30,10 +30,11 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from apps.accounts.models import User, FarmerProfile
 from apps.inventory.models import InventoryBatch, Product, ProductVariant
 from apps.orders.models import Order, OrderItem
-from .models import FarmerMedia, FarmerPayout, FarmerOTP
+from .models import FarmerMedia, FarmerPayout, FarmerOTP, FarmerNotification, BankDetails
 from .serializers import (
     FarmerProfileSerializer, FarmerBatchSerializer,
     FarmerAddBatchSerializer, FarmerPayoutSerializer, FarmerMediaSerializer,
+    BankDetailsSerializer, FarmerNotificationSerializer,
 )
 from .permissions import IsFarmerUser
 
@@ -227,6 +228,18 @@ class FarmerDashboardView(APIView):
         weekly_items = sold_items.filter(order__created_at__gte=week_ago)
 
         monthly_total = float(monthly_items.aggregate(t=Sum('price'))['t'] or 0)
+        recent_payouts = [
+            {
+                'id': str(p.id)[:8],
+                'amount': float(p.amount),
+                'status': p.status,
+                'date': p.created_at.strftime('%d %b'),
+                'type': 'credit',
+                'description': f'Payout {p.status}',
+            }
+            for p in profile.payouts.all()[:5]
+        ]
+
         return Response({
             'total_earnings': float(total_revenue),
             'total_sales': float(total_revenue),
@@ -237,12 +250,11 @@ class FarmerDashboardView(APIView):
             'live_products': batches.filter(stock_level__gt=0).count(),
             'avg_rating': float(profile.rating),
             'total_orders': sold_items.values('order').distinct().count(),
-            'weekly_sales': float(
-                weekly_items.aggregate(t=Sum('price'))['t'] or 0
-            ),
-            'monthly_sales': float(
-                monthly_items.aggregate(t=Sum('price'))['t'] or 0
-            ),
+            'weekly_sales': float(weekly_items.aggregate(t=Sum('price'))['t'] or 0),
+            'monthly_sales': float(monthly_items.aggregate(t=Sum('price'))['t'] or 0),
+            'pending_payouts': float(profile.payouts.filter(status='pending').aggregate(Sum('amount'))['amount__sum'] or 0),
+            'unread_notifications_count': profile.notifications.filter(is_read=False).count(),
+            'recent_transactions': recent_payouts,
         })
 
 
@@ -389,3 +401,54 @@ class FarmerOrderListView(APIView):
             })
 
         return Response(data)
+
+
+@method_decorator(csrf_exempt, name='dispatch')
+class BankDetailsView(APIView):
+    """GET/POST /api/farmer/bank/ - Manage farmer bank account."""
+    permission_classes = [IsFarmerUser]
+
+    def get(self, request):
+        try:
+            profile = request.user.farmer_profile
+            bank_details = profile.bank_details
+            serializer = BankDetailsSerializer(bank_details)
+            return Response(serializer.data)
+        except (FarmerProfile.DoesNotExist, BankDetails.DoesNotExist):
+            return Response({}, status=status.HTTP_200_OK)
+
+    def post(self, request):
+        profile = request.user.farmer_profile
+        bank_details, _ = BankDetails.objects.get_or_create(farmer=profile)
+        serializer = BankDetailsSerializer(bank_details, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data)
+
+
+@method_decorator(csrf_exempt, name='dispatch')
+class NotificationListView(APIView):
+    """GET /api/farmer/notifications/ - List all notifications."""
+    permission_classes = [IsFarmerUser]
+
+    def get(self, request):
+        profile = request.user.farmer_profile
+        notifications = profile.notifications.all()[:50]
+        serializer = FarmerNotificationSerializer(notifications, many=True)
+        return Response(serializer.data)
+
+    def post(self, request):
+        """Mark as read."""
+        notification_id = request.data.get('id')
+        if not notification_id:
+            # Mark all as read
+            request.user.farmer_profile.notifications.update(is_read=True)
+            return Response({'status': 'all marked as read'})
+        
+        try:
+            notif = request.user.farmer_profile.notifications.get(id=notification_id)
+            notif.is_read = True
+            notif.save()
+            return Response({'status': 'marked as read'})
+        except FarmerNotification.DoesNotExist:
+            return Response({'error': 'Not found'}, status=404)

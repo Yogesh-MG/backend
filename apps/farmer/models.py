@@ -81,3 +81,51 @@ class FarmerOTP(models.Model):
 
     class Meta:
         ordering = ['-created_at']
+
+
+class BankDetails(models.Model):
+    """Farmer's bank account information for payouts."""
+    farmer = models.OneToOneField(
+        'accounts.FarmerProfile',
+        on_delete=models.CASCADE,
+        related_name='bank_details',
+    )
+    account_name = models.CharField(max_length=255)
+    account_number = models.CharField(max_length=50)
+    ifsc_code = models.CharField(max_length=20)
+    bank_name = models.CharField(max_length=255, blank=True)
+    upi_id = models.CharField(max_length=100, blank=True)
+    is_verified = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"Bank: {self.account_name} ({self.farmer.user.username})"
+
+
+class FarmerNotification(models.Model):
+    """In-app notifications for farmers."""
+    TYPE_CHOICES = [
+        ('info', 'Information'),
+        ('success', 'Success'),
+        ('warning', 'Warning'),
+        ('error', 'Error'),
+    ]
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    farmer = models.ForeignKey(
+        'accounts.FarmerProfile',
+        on_delete=models.CASCADE,
+        related_name='notifications',
+    )
+    title = models.CharField(max_length=255)
+    message = models.TextField()
+    type = models.CharField(max_length=20, choices=TYPE_CHOICES, default='info')
+    is_read = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"{self.title} for {self.farmer.user.username}"
+
+    class Meta:
+        ordering = ['-created_at']

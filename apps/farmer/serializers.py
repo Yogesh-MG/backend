@@ -2,7 +2,7 @@
 from rest_framework import serializers
 from apps.accounts.models import FarmerProfile
 from apps.inventory.models import InventoryBatch
-from .models import FarmerMedia, FarmerPayout
+from .models import FarmerMedia, FarmerPayout, BankDetails, FarmerNotification
 
 
 class FarmerProfileSerializer(serializers.ModelSerializer):
@@ -59,6 +59,20 @@ class FarmerAddBatchSerializer(serializers.Serializer):
     stock_level = serializers.DecimalField(max_digits=10, decimal_places=3, min_value=0)
     harvest_date = serializers.DateTimeField()
     is_organic = serializers.BooleanField(default=False)
+
+
+class BankDetailsSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = BankDetails
+        fields = ['id', 'account_name', 'account_number', 'ifsc_code', 'bank_name', 'upi_id', 'is_verified']
+        read_only_fields = ['is_verified']
+
+
+class FarmerNotificationSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = FarmerNotification
+        fields = ['id', 'title', 'message', 'type', 'is_read', 'created_at']
+        read_only_fields = ['created_at']
 
 
 class FarmerDashboardSerializer(serializers.Serializer):
