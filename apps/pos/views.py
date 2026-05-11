@@ -441,9 +441,14 @@ class PosOrderLookupView(APIView):
             )
 
         try:
-            txn = PosTransaction.objects.prefetch_related(
-                'items', 'tenders'
-            ).get(id=receipt_id)
+            # Try full UUID first, then fallback to prefix match
+            if len(receipt_id) >= 8:
+                txn = PosTransaction.objects.prefetch_related('items', 'tenders').filter(id__istartswith=receipt_id).first()
+            else:
+                txn = PosTransaction.objects.prefetch_related('items', 'tenders').get(id=receipt_id)
+            
+            if not txn:
+                raise PosTransaction.DoesNotExist()
         except (PosTransaction.DoesNotExist, Exception):
             return Response(
                 {'error': 'Transaction not found'},
