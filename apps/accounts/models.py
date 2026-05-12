@@ -52,7 +52,8 @@ class OtpCode(models.Model):
     @classmethod
     def create_otp(cls, phone_number, validity_minutes=10):
         """Create a new OTP code for a phone number."""
-        code = ''.join([str(i) for i in secrets.token_bytes(3)])[:6].zfill(6)
+        import random
+        code = str(random.randint(100000, 999999))
         expires_at = timezone.now() + timedelta(minutes=validity_minutes)
         otp = cls.objects.create(
             phone_number=phone_number,

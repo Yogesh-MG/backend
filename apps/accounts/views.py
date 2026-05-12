@@ -295,7 +295,7 @@ class SendOtpView(APIView):
         if not serializer.is_valid():
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-        phone = serializer.validated_data['phone']
+        phone = serializer.validated_data['phone'].strip()
 
         # Invalidate old OTPs
         OtpCode.objects.filter(phone_number=phone, is_verified=False).update(is_verified=True)
@@ -325,10 +325,10 @@ class VerifyOtpView(APIView):
         if not serializer.is_valid():
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-        phone = serializer.validated_data['phone']
-        otp_code = serializer.validated_data['otp']
-        device_name = serializer.validated_data.get('device_name', '')
-        device_identifier = serializer.validated_data.get('device_identifier', '')
+        phone = serializer.validated_data['phone'].strip()
+        otp_code = serializer.validated_data['otp'].strip()
+        device_name = serializer.validated_data.get('device_name', '').strip()
+        device_identifier = serializer.validated_data.get('device_identifier', '').strip()
 
         # Get the latest OTP for this phone
         otp = OtpCode.objects.filter(phone_number=phone, is_verified=False).order_by('-created_at').first()
@@ -354,6 +354,7 @@ class VerifyOtpView(APIView):
         if otp.code != otp_code:
             otp.attempts += 1
             otp.save(update_fields=['attempts'])
+            print(f"DEBUG: OTP mismatch for {phone}. Expected: '{otp.code}', Got: '{otp_code}'")
             return Response(
                 {'error': 'Invalid OTP'},
                 status=status.HTTP_400_BAD_REQUEST
@@ -366,12 +367,14 @@ class VerifyOtpView(APIView):
         # Find or create user with this phone number
         user = User.objects.filter(phone_number=phone).first()
 
+        platform = request.headers.get('X-App-Platform', 'DeliveryApp')
+        is_consumer = platform == 'ConsumerApp'
+
         if not user:
-            # Create new delivery partner user
-            # Username is phone number, password is generated
-            from django.utils.text import slugify
+            # Create new user
             import secrets
-            username_base = f"delivery_{phone}"
+            role = 'CUSTOMER' if is_consumer else 'DELIVERY'
+            username_base = f"{role.lower()}_{phone}"
             username = username_base
             counter = 1
             while User.objects.filter(username=username).exists():
@@ -382,13 +385,13 @@ class VerifyOtpView(APIView):
             user = User.objects.create_user(
                 username=username,
                 phone_number=phone,
-                role='DELIVERY',
+                role=role,
                 is_verified=True
             )
             user.set_password(temp_password)
             user.save()
 
-        # Create device auth key
+        # Create device auth key (useful for persistence)
         device_key = DeviceAuthKey.create_device_key(
             user=user,
             device_name=device_name,
@@ -396,11 +399,24 @@ class VerifyOtpView(APIView):
             validity_days=90
         )
 
+        # Also issue standard JWT tokens for the web/consumer app
+        refresh = RefreshToken.for_user(user)
+        
+        # Override token lifetime if request comes from an operational App
+        if not is_consumer:
+            refresh.set_exp(lifetime=timedelta(days=90))
+            refresh.access_token.set_exp(lifetime=timedelta(days=30))
+
         response_data = {
             'device_auth_key': device_key.key,
             'device_auth_key_expires': device_key.expires_at.isoformat(),
+            'access': str(refresh.access_token),
+            'refresh': str(refresh),
             'user': UserSerializer(user).data
         }
 
-        response_serializer = AuthResponseSerializer(response_data)
-        return Response(response_serializer.data, status=status.HTTP_200_OK)
+        # Use _set_auth_cookies to handle browser-based session
+        response = Response(response_data, status=status.HTTP_200_OK)
+        _set_auth_cookies(response, str(refresh.access_token), str(refresh), is_app_request=not is_consumer)
+        
+        return response
