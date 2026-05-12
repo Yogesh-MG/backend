@@ -427,16 +427,39 @@ class PosWastageView(APIView):
 @method_decorator(csrf_exempt, name='dispatch')
 class PosOrderLookupView(APIView):
     """
-    GET /api/pos/orders/lookup/?receipt_id=...
-    Look up a past transaction by its UUID for return processing.
+    GET /api/pos/orders/lookup/
+    Look up a past transaction by receipt_id or list transactions by phone.
+    Query params:
+      - receipt_id: UUID (or prefix) of a single transaction
+      - phone: customer phone number to list their last 5 transactions
     """
     permission_classes = [IsPosOperator]
 
     def get(self, request):
         receipt_id = request.query_params.get('receipt_id', '').strip()
+        phone = request.query_params.get('phone', '').strip()
+
+        # Phone-based history search (no-receipt returns)
+        if phone:
+            customer = PosCustomer.objects.filter(phone=phone).first()
+            if not customer:
+                return Response(
+                    {'error': 'Customer not found'},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
+            txns = PosTransaction.objects.filter(
+                customer=customer, transaction_type='SALE'
+            ).prefetch_related('items', 'tenders').order_by('-created_at')[:5]
+            serializer = PosTransactionSerializer(txns, many=True)
+            data = serializer.data
+            for item, txn in zip(data, txns):
+                item['transaction_type'] = txn.transaction_type
+                item['customer_name'] = txn.customer.name if txn.customer else ''
+            return Response(data)
+
         if not receipt_id:
             return Response(
-                {'error': 'receipt_id parameter required'},
+                {'error': 'receipt_id or phone parameter required'},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -465,6 +488,7 @@ class PosOrderLookupView(APIView):
         serializer = PosTransactionSerializer(txn)
         data = serializer.data
         data['transaction_type'] = txn.transaction_type
+        data['customer_name'] = txn.customer.name if txn.customer else ''
         return Response(data)
 
 

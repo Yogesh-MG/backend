@@ -93,15 +93,17 @@ class DeviceAuthKey(models.Model):
         key = secrets.token_urlsafe(32)
         expires_at = timezone.now() + timedelta(days=validity_days)
         
-        # Revoke existing keys for this user if any
-        cls.objects.filter(user=user, is_active=True).update(is_active=False)
-        
-        device_key = cls.objects.create(
+        # Use update_or_create to handle OneToOneField constraint
+        device_key, created = cls.objects.update_or_create(
             user=user,
-            key=key,
-            device_name=device_name,
-            device_identifier=device_identifier,
-            expires_at=expires_at
+            defaults={
+                'key': key,
+                'device_name': device_name,
+                'device_identifier': device_identifier,
+                'expires_at': expires_at,
+                'is_active': True,
+                'last_used_at': None
+            }
         )
         return device_key
 

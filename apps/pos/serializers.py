@@ -24,10 +24,16 @@ class PosProductSerializer(serializers.Serializer):
 class PosCustomerSerializer(serializers.ModelSerializer):
     """POS walk-in customer."""
     pride = serializers.BooleanField(source='is_pride', read_only=True)
+    wallet_balance = serializers.SerializerMethodField()
 
     class Meta:
         model = PosCustomer
-        fields = ['id', 'name', 'phone', 'email', 'tier', 'points', 'pride']
+        fields = ['id', 'name', 'phone', 'email', 'tier', 'points', 'pride', 'wallet_balance']
+
+    def get_wallet_balance(self, obj):
+        if obj.user and hasattr(obj.user, 'wallet'):
+            return float(obj.user.wallet.balance)
+        return 0.0
 
 
 class PosCartItemSerializer(serializers.Serializer):
@@ -42,7 +48,7 @@ class PosCartItemSerializer(serializers.Serializer):
 
 class PosTenderSerializer(serializers.Serializer):
     """Individual payment tender."""
-    method = serializers.ChoiceField(choices=['Cash', 'UPI', 'Card', 'Sodexo'])
+    method = serializers.ChoiceField(choices=['Cash', 'UPI', 'Card', 'Sodexo', 'Wallet'])
     amount = serializers.FloatField()
 
 

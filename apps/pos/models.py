@@ -118,6 +118,7 @@ class PosTransaction(models.Model):
         ('UPI', 'UPI'),
         ('Card', 'Card'),
         ('Sodexo', 'Sodexo'),
+        ('Wallet', 'Wallet'),
         ('Split', 'Split Payment'),
     ]
 
