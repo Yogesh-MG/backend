@@ -1,8 +1,11 @@
 from rest_framework import viewsets, permissions, status
 from rest_framework.response import Response
 from rest_framework.pagination import PageNumberPagination
+from rest_framework.decorators import action
+from django.shortcuts import get_object_or_404
 from .models import Order
 from .serializers import OrderCreateSerializer, OrderDetailSerializer
+from .order_modification import OrderModificationService
 
 
 class OrderPagination(PageNumberPagination):
@@ -43,3 +46,83 @@ class OrderViewSet(viewsets.ModelViewSet):
                 return Response({"detail": "Order not found."}, status=status.HTTP_404_NOT_FOUND)
         
         return super().retrieve(request, *args, **kwargs)
+
+    @action(detail=True, methods=['post'], url_path='add-item')
+    def add_item(self, request, pk=None):
+        """Add a product to an existing order (if not yet packed)."""
+        order = self.get_object()
+        
+        # Verify ownership
+        if order.user != request.user:
+            return Response(
+                {"detail": "Permission denied"},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        try:
+            batch_id = request.data.get('batch_id')
+            quantity = request.data.get('quantity')
+            
+            if not batch_id or not quantity:
+                return Response(
+                    {"detail": "batch_id and quantity are required"},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            result = OrderModificationService.add_item_to_order(
+                order=order,
+                batch_id=int(batch_id),
+                quantity=int(quantity)
+            )
+            
+            return Response(result, status=status.HTTP_200_OK)
+            
+        except ValueError as e:
+            return Response(
+                {"detail": str(e)},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        except Exception as e:
+            return Response(
+                {"detail": "Failed to add item: " + str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+    @action(detail=True, methods=['post'], url_path='remove-item')
+    def remove_item(self, request, pk=None):
+        """Remove a product from an existing order (if not yet packed)."""
+        order = self.get_object()
+        
+        # Verify ownership
+        if order.user != request.user:
+            return Response(
+                {"detail": "Permission denied"},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        try:
+            order_item_id = request.data.get('order_item_id')
+            
+            if not order_item_id:
+                return Response(
+                    {"detail": "order_item_id is required"},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            result = OrderModificationService.remove_item_from_order(
+                order=order,
+                order_item_id=int(order_item_id)
+            )
+            
+            return Response(result, status=status.HTTP_200_OK)
+            
+        except ValueError as e:
+            return Response(
+                {"detail": str(e)},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        except Exception as e:
+            return Response(
+                {"detail": "Failed to remove item: " + str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
