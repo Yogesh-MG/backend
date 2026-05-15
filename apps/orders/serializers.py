@@ -130,11 +130,12 @@ class OrderDetailSerializer(serializers.ModelSerializer):
         fields = '__all__'
 
     def get_items(self, obj):
+        from apps.inventory.serializers import InventoryBatchSerializer
         items = obj.items.all()
         return [
             {
                 "id": i.id,
-                "batch": i.batch.id if i.batch else None,
+                "batch": InventoryBatchSerializer(i.batch).data if i.batch else None,
                 "product_name": i.product_name,
                 "price": float(i.price),
                 "quantity": i.quantity,
