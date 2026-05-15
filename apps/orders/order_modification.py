@@ -50,16 +50,23 @@ class OrderModificationService:
         if batch.stock_level < quantity:
             raise ValueError(f"Insufficient stock. Available: {batch.stock_level}")
         
-        # Create order item
+        # Create or increment order item
         item_total = batch.price * Decimal(quantity)
-        order_item = OrderItem.objects.create(
+        
+        order_item, created = OrderItem.objects.get_or_create(
             order=order,
             batch=batch,
-            product_name=batch.variant.product.name or "Fresh Produce",
-            price=batch.price,
-            quantity=quantity,
-            unit=batch.variant.unit or "kg"
+            defaults={
+                'product_name': batch.variant.product.name or "Fresh Produce",
+                'price': batch.price,
+                'quantity': quantity,
+                'unit': batch.variant.unit or "kg"
+            }
         )
+        
+        if not created:
+            order_item.quantity += quantity
+            order_item.save(update_fields=['quantity'])
         
         # Update order totals
         old_subtotal = order.subtotal

@@ -94,6 +94,8 @@ class OrderDetailSerializer(serializers.ModelSerializer):
         items = obj.items.all()
         return [
             {
+                "id": i.id,
+                "batch": i.batch.id if i.batch else None,
                 "product_name": i.product_name,
                 "price": float(i.price),
                 "quantity": i.quantity,
