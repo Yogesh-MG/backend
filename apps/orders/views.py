@@ -36,7 +36,7 @@ class OrderViewSet(viewsets.ModelViewSet):
     # retrieve is now handled by lookup_field = 'tracking_id'
 
     @action(detail=True, methods=['post'], url_path='add-item')
-    def add_item(self, request, pk=None):
+    def add_item(self, request, tracking_id=None):
         """Add a product to an existing order (if not yet packed)."""
         order = self.get_object()
         
@@ -77,7 +77,7 @@ class OrderViewSet(viewsets.ModelViewSet):
             )
 
     @action(detail=True, methods=['post'], url_path='remove-item')
-    def remove_item(self, request, pk=None):
+    def remove_item(self, request, tracking_id=None):
         """Remove a product from an existing order (if not yet packed)."""
         order = self.get_object()
         
