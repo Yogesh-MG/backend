@@ -137,6 +137,80 @@ class OrderModificationService:
                 "amount": float(item_total) if wallet_transaction else 0,
             } if wallet_transaction else None
         }
+
+    @staticmethod
+    @db_transaction.atomic
+    def update_item_quantity(order: Order, order_item_id: int, quantity: int) -> dict:
+        """Update an item quantity and handle price difference via wallet."""
+        
+        can_modify, reason = OrderModificationService.can_modify_order(order)
+        if not can_modify:
+            raise ValueError(reason)
+            
+        if quantity <= 0:
+            return OrderModificationService.remove_item_from_order(order, order_item_id)
+            
+        try:
+            order_item = OrderItem.objects.get(id=order_item_id, order=order)
+        except OrderItem.DoesNotExist:
+            raise ValueError(f"Order item {order_item_id} not found in this order")
+            
+        old_quantity = order_item.quantity
+        diff = quantity - old_quantity
+        
+        if diff == 0:
+            return {"message": "No change in quantity"}
+            
+        # Check stock for increases
+        if diff > 0:
+            if order_item.batch.stock < diff:
+                raise ValueError(f"Insufficient stock. Available: {order_item.batch.stock}")
+        
+        diff_total = order_item.price * Decimal(diff)
+        
+        # Update item
+        order_item.quantity = quantity
+        order_item.save(update_fields=['quantity', 'updated_at'])
+        
+        # Update order totals
+        order.subtotal = order.subtotal + diff_total
+        order.total = max(Decimal('0'), order.subtotal + order.delivery_fee)
+        order.save(update_fields=['subtotal', 'total', 'updated_at'])
+        
+        # Handle wallet transaction/refund if payment was made
+        wallet_transaction = None
+        if order.wallet_amount_used > 0 and order.payment_status == 'COMPLETED':
+            if diff > 0:
+                # Debit
+                wallet_transaction = OrderModificationService._create_wallet_transaction(
+                    order=order,
+                    amount=diff_total,
+                    reason='PRODUCT_UPDATE',
+                    notes=f"Quantity increased for {order_item.product_name} in order {order.tracking_id}"
+                )
+            else:
+                # Refund
+                wallet_transaction = OrderModificationService._refund_to_wallet(
+                    order=order,
+                    amount=abs(diff_total),
+                    reason='PRODUCT_UPDATE',
+                    notes=f"Quantity decreased for {order_item.product_name} in order {order.tracking_id}"
+                )
+                
+        return {
+            "order_item_id": order_item.id,
+            "product_name": order_item.product_name,
+            "old_quantity": old_quantity,
+            "new_quantity": quantity,
+            "price": float(order_item.price),
+            "diff_total": float(diff_total),
+            "new_order_total": float(order.total),
+            "wallet_adjustment": {
+                "id": wallet_transaction.id if wallet_transaction else None,
+                "amount": float(abs(diff_total)) if wallet_transaction else 0,
+                "type": "REFUND" if diff < 0 else "DEBIT"
+            } if wallet_transaction else None
+        }
     
     @staticmethod
     def _create_wallet_transaction(order: Order, amount: Decimal, reason: str, notes: str) -> WalletTransaction:

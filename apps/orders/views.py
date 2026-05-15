@@ -17,6 +17,7 @@ class OrderPagination(PageNumberPagination):
 class OrderViewSet(viewsets.ModelViewSet):
     permission_classes = [permissions.IsAuthenticated]
     pagination_class = OrderPagination
+    lookup_field = 'tracking_id'
 
     def get_queryset(self):
         # Users can only see their own orders
@@ -32,20 +33,7 @@ class OrderViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         serializer.save(user=self.request.user)
 
-    def retrieve(self, request, *args, **kwargs):
-        # Allow looking up by tracking_id instead of just PK
-        lookup_url_kwarg = self.lookup_url_kwarg or self.lookup_field
-        lookup_value = self.kwargs[lookup_url_kwarg]
-        
-        if lookup_value.startswith('FRSH-'):
-            try:
-                instance = Order.objects.get(tracking_id=lookup_value, user=request.user)
-                serializer = self.get_serializer(instance)
-                return Response(serializer.data)
-            except Order.DoesNotExist:
-                return Response({"detail": "Order not found."}, status=status.HTTP_404_NOT_FOUND)
-        
-        return super().retrieve(request, *args, **kwargs)
+    # retrieve is now handled by lookup_field = 'tracking_id'
 
     @action(detail=True, methods=['post'], url_path='add-item')
     def add_item(self, request, pk=None):
@@ -124,5 +112,39 @@ class OrderViewSet(viewsets.ModelViewSet):
         except Exception as e:
             return Response(
                 {"detail": "Failed to remove item: " + str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+    @action(detail=True, methods=['post'], url_path='update-item')
+    def update_item(self, request, tracking_id=None):
+        """Update the quantity of an item in an existing order."""
+        order = self.get_object()
+        
+        if order.user != request.user:
+            return Response({"detail": "Permission denied"}, status=status.HTTP_403_FORBIDDEN)
+        
+        try:
+            order_item_id = request.data.get('order_item_id')
+            quantity = request.data.get('quantity')
+            
+            if not order_item_id or quantity is None:
+                return Response(
+                    {"detail": "order_item_id and quantity are required"},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            result = OrderModificationService.update_item_quantity(
+                order=order,
+                order_item_id=int(order_item_id),
+                quantity=int(quantity)
+            )
+            
+            return Response(result, status=status.HTTP_200_OK)
+            
+        except ValueError as e:
+            return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        except Exception as e:
+            return Response(
+                {"detail": "Failed to update item: " + str(e)},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
