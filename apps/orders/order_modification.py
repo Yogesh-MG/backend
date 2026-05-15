@@ -175,9 +175,14 @@ class OrderModificationService:
         
         diff_total = order_item.price * Decimal(diff)
         
-        # Update item
+        # Update item and stock
         order_item.quantity = quantity
         order_item.save(update_fields=['quantity', 'updated_at'])
+        
+        # Adjust stock level in inventory
+        if order_item.batch:
+            order_item.batch.stock_level -= diff
+            order_item.batch.save(update_fields=['stock_level', 'updated_at'])
         
         # Update order totals
         order.subtotal = order.subtotal + diff_total
