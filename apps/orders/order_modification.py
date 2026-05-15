@@ -177,7 +177,7 @@ class OrderModificationService:
         
         # Update item and stock
         order_item.quantity = quantity
-        order_item.save(update_fields=['quantity', 'updated_at'])
+        order_item.save(update_fields=['quantity'])
         
         # Adjust stock level in inventory
         if order_item.batch:

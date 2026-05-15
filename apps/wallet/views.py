@@ -68,9 +68,10 @@ class WalletViewSet(viewsets.ViewSet):
         amount = serializer.validated_data['amount']
         wallet, _ = Wallet.objects.get_or_create(user=request.user)
         
-        # Initialize Razorpay client
+        # Initialize Razorpay client using settings
+        from django.conf import settings
         razorpay_client = razorpay.Client(
-            auth=(os.getenv('RAZORPAY_KEY_ID'), os.getenv('RAZORPAY_KEY_SECRET'))
+            auth=(settings.RAZORPAY_KEY_ID, settings.RAZORPAY_KEY_SECRET)
         )
         
         try:
@@ -97,7 +98,7 @@ class WalletViewSet(viewsets.ViewSet):
                 'topup_id': topup.id,
                 'razorpay_order_id': razorpay_order['id'],
                 'amount': float(amount),
-                'key_id': os.getenv('RAZORPAY_KEY_ID')
+                'key_id': settings.RAZORPAY_KEY_ID
             }, status=status.HTTP_201_CREATED)
         
         except Exception as e:
@@ -128,8 +129,9 @@ class WalletViewSet(viewsets.ViewSet):
             )
         
         # Verify signature
+        from django.conf import settings
         razorpay_client = razorpay.Client(
-            auth=(os.getenv('RAZORPAY_KEY_ID'), os.getenv('RAZORPAY_KEY_SECRET'))
+            auth=(settings.RAZORPAY_KEY_ID, settings.RAZORPAY_KEY_SECRET)
         )
         
         try:
