@@ -3,8 +3,11 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from django.utils.timezone import now
+from django.db import transaction
+from django.conf import settings
 from decimal import Decimal
 import razorpay
+import logging
 import os
 
 from .models import Wallet, WalletTransaction, WalletTopup, Partnership, Referral
@@ -13,6 +16,8 @@ from .serializers import (
     WalletTopupSerializer, WalletTopupInitiateSerializer,
     PartnershipSerializer, ReferralSerializer
 )
+
+logger = logging.getLogger(__name__)
 
 
 class WalletViewSet(viewsets.ViewSet):
@@ -79,6 +84,7 @@ class WalletViewSet(viewsets.ViewSet):
             razorpay_order = razorpay_client.order.create({
                 'amount': int(amount * 100),  # Razorpay expects amount in paise
                 'currency': 'INR',
+                'payment_capture': 1,
                 'notes': {
                     'user_id': request.user.id,
                     'username': request.user.username,
@@ -121,15 +127,14 @@ class WalletViewSet(viewsets.ViewSet):
             )
         
         try:
-            from django.db import transaction
-            import logging
-            logger = logging.getLogger(__name__)
+            razorpay_client = razorpay.Client(auth=(settings.RAZORPAY_KEY_ID, settings.RAZORPAY_KEY_SECRET))
 
             with transaction.atomic():
                 # Fetch topup and lock it for processing
                 try:
                     topup = WalletTopup.objects.select_for_update().get(id=topup_id, wallet__user=request.user)
                 except WalletTopup.DoesNotExist:
+                    logger.warning(f"Top-up record not found: topup_id={topup_id}, user={request.user.id}")
                     return Response({'error': 'Top-up record not found'}, status=status.HTTP_404_NOT_FOUND)
 
                 # 1. Idempotency Check: Don't process if already successful
@@ -141,34 +146,62 @@ class WalletViewSet(viewsets.ViewSet):
                     })
 
                 # 2. Verify Signature with Razorpay
-                from django.conf import settings
-                razorpay_client = razorpay.Client(auth=(settings.RAZORPAY_KEY_ID, settings.RAZORPAY_KEY_SECRET))
-                
                 try:
                     razorpay_client.utility.verify_payment_signature({
                         'razorpay_order_id': topup.razorpay_order_id,
                         'razorpay_payment_id': razorpay_payment_id,
                         'razorpay_signature': razorpay_signature
                     })
-                except razorpay.BadRequestError:
+                except razorpay.errors.SignatureVerificationError:
                     topup.status = 'FAILED'
                     topup.save(update_fields=['status', 'updated_at'])
-                    logger.error(f"Signature verification failed for topup {topup_id}")
-                    return Response({'error': 'Payment signature verification failed'}, status=status.HTTP_400_BAD_REQUEST)
+                    logger.error(
+                        f"Wrong Signature: topup_id={topup_id}, user={request.user.id}, "
+                        f"order_id={topup.razorpay_order_id}, payment_id={razorpay_payment_id}"
+                    )
+                    return Response(
+                        {'error': 'Payment signature verification failed'},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
                 
-                # 3. Update top-up record
+                # 3. Double-check payment status with Razorpay
+                try:
+                    payment = razorpay_client.payment.fetch(razorpay_payment_id)
+                except Exception as e:
+                    logger.error(
+                        f"Network/Internal Error fetching payment from Razorpay: "
+                        f"topup_id={topup_id}, payment_id={razorpay_payment_id}, error={str(e)}"
+                    )
+                    return Response(
+                        {'error': 'Unable to verify payment status with gateway. Please try again later.'},
+                        status=status.HTTP_502_BAD_GATEWAY
+                    )
+                
+                if payment['status'] not in ['captured', 'authorized']:
+                    topup.status = 'FAILED'
+                    topup.save(update_fields=['status', 'updated_at'])
+                    logger.error(
+                        f"Payment not captured: topup_id={topup_id}, payment_id={razorpay_payment_id}, "
+                        f"status={payment['status']}"
+                    )
+                    return Response(
+                        {'error': f'Payment status is {payment["status"]}. Top-up not credited.'},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+                
+                # 4. Update top-up record
                 topup.razorpay_payment_id = razorpay_payment_id
                 topup.razorpay_signature = razorpay_signature
                 topup.status = 'SUCCESS'
                 topup.save()
                 
-                # 4. Credit wallet with atomicity
+                # 5. Credit wallet with atomicity
                 wallet = topup.wallet
                 balance_before = wallet.balance
                 wallet.balance += topup.amount
                 wallet.save(update_fields=['balance'])
                 
-                # 5. Create transaction record for audit trail
+                # 6. Create transaction record for audit trail
                 WalletTransaction.objects.create(
                     wallet=wallet,
                     amount=topup.amount,
@@ -179,7 +212,10 @@ class WalletViewSet(viewsets.ViewSet):
                     notes=f'Razorpay Payment ID: {razorpay_payment_id}'
                 )
                 
-                logger.info(f"Wallet credited: User {request.user.id}, Amount {topup.amount}, New Balance {wallet.balance}")
+                logger.info(
+                    f"Wallet credited: user={request.user.id}, topup_id={topup.id}, "
+                    f"amount={topup.amount}, new_balance={wallet.balance}, payment_id={razorpay_payment_id}"
+                )
 
                 return Response({
                     'status': 'success',
