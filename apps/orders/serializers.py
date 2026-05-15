@@ -53,25 +53,62 @@ class OrderCreateSerializer(serializers.ModelSerializer):
                 })
 
             # 2. Get Delivery Fee from actual slot config (or simple logic for now)
-            # In a real app, you'd fetch the DeliverySlot model here.
             delivery_fee = 25 if subtotal < 199 else 0
             total = subtotal + delivery_fee
 
-            # 3. Create the Order with calculated values
-            # All successful orders are confirmed automatically
+            # 3. Handle Wallet Payment Deduction
+            payment_method = validated_data.get('payment_method', 'UPI')
+            wallet_amount_used = 0
             is_paid = validated_data.get('is_paid', False)
-            
+
+            if payment_method == 'WALLET':
+                from apps.wallet.models import Wallet, WalletTransaction
+                try:
+                    wallet = Wallet.objects.get(user=user)
+                    if wallet.balance < total:
+                        raise serializers.ValidationError(f"Insufficient wallet balance. Required: ₹{total}, Available: ₹{wallet.balance}")
+                    
+                    # Record balance before deduction
+                    balance_before = wallet.balance
+                    wallet.balance -= total
+                    wallet.save(update_fields=['balance', 'updated_at'])
+                    
+                    wallet_amount_used = total
+                    is_paid = True
+                    
+                    # Create the transaction record for the ledger
+                    WalletTransaction.objects.create(
+                        wallet=wallet,
+                        amount=-total,
+                        reason='ORDER_PAYMENT',
+                        balance_before=balance_before,
+                        balance_after=wallet.balance,
+                        notes=f"Initial payment for order creation"
+                    )
+                except Wallet.DoesNotExist:
+                    raise serializers.ValidationError("No wallet found for this user. Please top up first.")
+
+            # 4. Create the Order with calculated values
             order = Order.objects.create(
                 user=user,
                 subtotal=subtotal,
                 delivery_fee=delivery_fee,
                 total=total,
+                wallet_amount_used=wallet_amount_used,
+                is_paid=is_paid,
                 status='CONFIRMED',
                 payment_status='COMPLETED' if is_paid else 'PENDING',
                 **validated_data
             )
 
-            # 4. Create items and deduct stock
+            # Link the wallet transaction to the order if it was created
+            if payment_method == 'WALLET':
+                txn = WalletTransaction.objects.filter(wallet__user=user, reason='ORDER_PAYMENT', related_order__isnull=True).order_by('-created_at').first()
+                if txn:
+                    txn.related_order = order
+                    txn.save(update_fields=['related_order'])
+
+            # 5. Create items and deduct stock
             for item in order_items_to_create:
                 batch = item.pop('batch')
                 qty = item['quantity']
