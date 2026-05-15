@@ -47,18 +47,18 @@ class OrderModificationService:
             raise ValueError(f"Product batch {batch_id} not found")
         
         # Check stock
-        if batch.stock < quantity:
-            raise ValueError(f"Insufficient stock. Available: {batch.stock}")
+        if batch.stock_level < quantity:
+            raise ValueError(f"Insufficient stock. Available: {batch.stock_level}")
         
         # Create order item
-        item_total = batch.price_per_unit * Decimal(quantity)
+        item_total = batch.price * Decimal(quantity)
         order_item = OrderItem.objects.create(
             order=order,
             batch=batch,
-            product_name=batch.product_name or batch.crop_name or "Fresh Produce",
-            price=batch.price_per_unit,
+            product_name=batch.variant.product.name or "Fresh Produce",
+            price=batch.price,
             quantity=quantity,
-            unit=batch.unit or "kg"
+            unit=batch.variant.unit or "kg"
         )
         
         # Update order totals
@@ -81,7 +81,7 @@ class OrderModificationService:
             "order_item_id": order_item.id,
             "product_name": order_item.product_name,
             "quantity": quantity,
-            "price": float(batch.price_per_unit),
+            "price": float(batch.price),
             "total": float(item_total),
             "new_order_total": float(order.total),
             "wallet_transaction": {
@@ -163,8 +163,8 @@ class OrderModificationService:
             
         # Check stock for increases
         if diff > 0:
-            if order_item.batch.stock < diff:
-                raise ValueError(f"Insufficient stock. Available: {order_item.batch.stock}")
+            if order_item.batch.stock_level < diff:
+                raise ValueError(f"Insufficient stock. Available: {order_item.batch.stock_level}")
         
         diff_total = order_item.price * Decimal(diff)
         
