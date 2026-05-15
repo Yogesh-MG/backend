@@ -24,6 +24,7 @@ class OrderCreateSerializer(serializers.ModelSerializer):
         validated_data.pop('subtotal', None)
         validated_data.pop('delivery_fee', None)
         validated_data.pop('total', None)
+        validated_data.pop('is_paid', None)
         user = validated_data.pop('user', self.context['request'].user)
         delivery_slot_type = validated_data.get('delivery_slot', 'EXPRESS')
 
@@ -59,7 +60,7 @@ class OrderCreateSerializer(serializers.ModelSerializer):
             # 3. Handle Wallet Payment Deduction
             payment_method = validated_data.get('payment_method', 'UPI')
             wallet_amount_used = 0
-            is_paid = validated_data.get('is_paid', False)
+            is_paid = False
 
             if payment_method == 'WALLET':
                 from apps.wallet.models import Wallet, WalletTransaction
@@ -71,7 +72,8 @@ class OrderCreateSerializer(serializers.ModelSerializer):
                     # Record balance before deduction
                     balance_before = wallet.balance
                     wallet.balance -= total
-                    wallet.save(update_fields=['balance', 'updated_at'])
+                    # Removing updated_at from update_fields as it might not exist in production schema yet
+                    wallet.save(update_fields=['balance'])
                     
                     wallet_amount_used = total
                     is_paid = True
