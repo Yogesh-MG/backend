@@ -244,9 +244,26 @@ class PosCustomerLookupView(APIView):
         if not phone:
             return Response({'error': 'phone parameter required'}, status=status.HTTP_400_BAD_REQUEST)
 
+        # 1. Check if it's a known B2B company phone
+        company = CompanyProfile.objects.filter(contact_phone=phone).first()
+        if company:
+            return Response({
+                'type': 'B2B',
+                'id': str(company.id),
+                'name': company.name,
+                'phone': company.contact_phone,
+                'email': company.email,
+                'is_b2b': True,
+                'company': PosCompanyProfileSerializer(company).data
+            })
+
+        # 2. Check if it's a regular customer
         try:
             customer = PosCustomer.objects.get(phone=phone)
-            return Response(PosCustomerSerializer(customer).data)
+            data = PosCustomerSerializer(customer).data
+            data['type'] = 'RETAIL'
+            data['is_b2b'] = customer.is_b2b_contact
+            return Response(data)
         except PosCustomer.DoesNotExist:
             return Response({'error': 'Customer not found'}, status=status.HTTP_404_NOT_FOUND)
 
@@ -260,22 +277,55 @@ class PosCustomerCreateView(APIView):
         name = request.data.get('name', '')
         phone = request.data.get('phone', '')
         email = request.data.get('email', '')
+        is_b2b = request.data.get('is_b2b', False)
 
         if not name or not phone:
             return Response({'error': 'name and phone required'}, status=status.HTTP_400_BAD_REQUEST)
 
-        customer, created = PosCustomer.objects.get_or_create(
-            phone=phone,
-            defaults={'name': name, 'email': email},
-        )
+        with transaction.atomic():
+            # If B2B, create/update company profile first
+            company = None
+            if is_b2b:
+                company_name = request.data.get('company_name', name)
+                gstin = request.data.get('gstin', '')
+                pan = request.data.get('pan', '')
+                address = request.data.get('address', '')
 
-        if not created:
-            return Response(
-                {'error': 'Customer with this phone already exists'},
-                status=status.HTTP_409_CONFLICT,
+                if not gstin:
+                    return Response({'error': 'GSTIN required for B2B registration'}, status=status.HTTP_400_BAD_REQUEST)
+
+                company, _ = CompanyProfile.objects.update_or_create(
+                    gstin=gstin,
+                    defaults={
+                        'name': company_name,
+                        'pan': pan,
+                        'address': address,
+                        'email': email,
+                        'contact_phone': phone
+                    }
+                )
+
+            customer, created = PosCustomer.objects.get_or_create(
+                phone=phone,
+                defaults={
+                    'name': name,
+                    'email': email,
+                    'is_b2b_contact': is_b2b
+                },
             )
 
-        return Response(PosCustomerSerializer(customer).data, status=status.HTTP_201_CREATED)
+            if not created and not is_b2b:
+                return Response(
+                    {'error': 'Customer with this phone already exists'},
+                    status=status.HTTP_409_CONFLICT,
+                )
+
+            data = PosCustomerSerializer(customer).data
+            if is_b2b and company:
+                data['is_b2b'] = True
+                data['company'] = PosCompanyProfileSerializer(company).data
+            
+            return Response(data, status=status.HTTP_201_CREATED)
 
 
 @method_decorator(csrf_exempt, name='dispatch')

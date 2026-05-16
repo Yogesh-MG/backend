@@ -66,6 +66,7 @@ class PosCustomer(models.Model):
     tier = models.CharField(max_length=20, choices=TIER_CHOICES, default='Bronze')
     points = models.PositiveIntegerField(default=0)
     is_pride = models.BooleanField(default=False, help_text="Whether customer is a PRIDE partner")
+    is_b2b_contact = models.BooleanField(default=False, help_text="Whether this customer represents a B2B business")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -155,6 +156,7 @@ class CompanyProfile(models.Model):
     address = models.TextField(blank=True)
     pan = models.CharField(max_length=10, blank=True, help_text="10-character PAN")
     email = models.EmailField(blank=True)
+    contact_phone = models.CharField(max_length=15, unique=True, null=True, blank=True, help_text="Primary contact phone for auto-detection")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

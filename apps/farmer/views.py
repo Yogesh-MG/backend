@@ -427,6 +427,62 @@ class BankDetailsView(APIView):
 
 
 @method_decorator(csrf_exempt, name='dispatch')
+class FarmerOrderDetailView(APIView):
+    """POST /api/farmer/orders/<id>/status/ - Update order status."""
+    permission_classes = [IsFarmerUser]
+
+    def post(self, request, order_id):
+        from apps.orders.models import Order
+        try:
+            profile = request.user.farmer_profile
+        except FarmerProfile.DoesNotExist:
+            return Response({'error': 'Profile not found'}, status=status.HTTP_404_NOT_FOUND)
+
+        new_status = request.data.get('status')
+        if not new_status:
+            return Response({'error': 'status is required'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            order = Order.objects.get(id=order_id)
+        except Order.DoesNotExist:
+            return Response({'error': 'Order not found'}, status=status.HTTP_404_NOT_FOUND)
+
+        # Verify this order contains items from this farmer
+        farmer_items = [item for item in order.items.all() if item.batch and item.batch.farmer_id == profile.id]
+        if not farmer_items:
+            return Response({'error': 'Order not associated with this farmer'}, status=status.HTTP_403_FORBIDDEN)
+
+        # Map farmer-facing statuses to order statuses
+        status_map = {
+            'packed': 'PROCESSING',
+            'pickup_requested': 'SHIPPED',
+        }
+        if new_status in status_map:
+            order.status = status_map[new_status]
+            order.save(update_fields=['status', 'updated_at'])
+
+        # Create notification
+        if new_status == 'packed':
+            FarmerNotification.objects.create(
+                farmer=profile,
+                title='Order Packed',
+                message=f'Order {order.tracking_id} has been marked as packed.',
+                type='success',
+                notification_type='general',
+            )
+        elif new_status == 'pickup_requested':
+            FarmerNotification.objects.create(
+                farmer=profile,
+                title='Pickup Requested',
+                message=f'Pickup requested for order {order.tracking_id}.',
+                type='info',
+                notification_type='pickup_scheduled',
+            )
+
+        return Response({'status': 'updated', 'order_id': str(order.id), 'new_status': order.status})
+
+
+@method_decorator(csrf_exempt, name='dispatch')
 class NotificationListView(APIView):
     """GET /api/farmer/notifications/ - List all notifications."""
     permission_classes = [IsFarmerUser]

@@ -22,6 +22,7 @@ urlpatterns = [
     path('batches/<int:batch_id>/', FarmerBatchDetailView.as_view(), name='farmer_batch_detail'),
     path('payouts/', FarmerPayoutView.as_view(), name='farmer_payouts'),
     path('orders/', FarmerOrderListView.as_view(), name='farmer_orders'),
+    path('orders/<int:order_id>/status/', FarmerOrderDetailView.as_view(), name='farmer_order_status'),
     path('bank/', BankDetailsView.as_view(), name='farmer_bank'),
     path('notifications/', NotificationListView.as_view(), name='farmer_notifications'),
 ]

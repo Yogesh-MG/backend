@@ -112,6 +112,14 @@ class FarmerNotification(models.Model):
         ('error', 'Error'),
     ]
 
+    NOTIFICATION_TYPE_CHOICES = [
+        ('new_order', 'New Order'),
+        ('payment_credited', 'Payment Credited'),
+        ('quality_alert', 'Quality Alert'),
+        ('pickup_scheduled', 'Pickup Scheduled'),
+        ('general', 'General'),
+    ]
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     farmer = models.ForeignKey(
         'accounts.FarmerProfile',
@@ -121,6 +129,12 @@ class FarmerNotification(models.Model):
     title = models.CharField(max_length=255)
     message = models.TextField()
     type = models.CharField(max_length=20, choices=TYPE_CHOICES, default='info')
+    notification_type = models.CharField(
+        max_length=30,
+        choices=NOTIFICATION_TYPE_CHOICES,
+        default='general',
+    )
+    metadata = models.JSONField(default=dict, blank=True)
     is_read = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
 

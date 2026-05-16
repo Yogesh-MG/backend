@@ -71,7 +71,7 @@ class BankDetailsSerializer(serializers.ModelSerializer):
 class FarmerNotificationSerializer(serializers.ModelSerializer):
     class Meta:
         model = FarmerNotification
-        fields = ['id', 'title', 'message', 'type', 'is_read', 'created_at']
+        fields = ['id', 'title', 'message', 'type', 'notification_type', 'metadata', 'is_read', 'created_at']
         read_only_fields = ['created_at']
 
 
