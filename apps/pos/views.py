@@ -12,6 +12,9 @@ Endpoints:
   POST /api/pos/customers/          — Register walk-in customer
   POST /api/pos/wastage/            — Log wastage
   GET  /api/pos/wastage/            — Get wastage for current shift
+  GET  /api/pos/settings/           — POS terminal settings
+  GET  /api/pos/companies/          — List B2B companies
+  POST /api/pos/companies/          — Register B2B company
 """
 from decimal import Decimal
 
@@ -33,12 +36,14 @@ from apps.inventory.models import InventoryBatch
 from .models import (
     PosEmployee, PosCustomer, PosShift,
     PosTransaction, PosTransactionItem, PosTender, PosWastageLog,
+    PosSettings, CompanyProfile, PosInvoiceCounter,
 )
 from .serializers import (
     PosProductSerializer, PosCustomerSerializer,
     PosOrderCreateSerializer, PosTransactionSerializer,
     PosShiftSerializer, PosShiftSummarySerializer,
-    PosWastageSerializer,
+    PosWastageSerializer, PosSettingsSerializer,
+    PosCompanyProfileSerializer,
 )
 from .permissions import IsPosOperator
 
@@ -274,6 +279,40 @@ class PosCustomerCreateView(APIView):
 
 
 @method_decorator(csrf_exempt, name='dispatch')
+class PosSettingsView(APIView):
+    """GET /api/pos/settings/"""
+    permission_classes = [IsPosOperator]
+
+    def get(self, request):
+        settings_obj = PosSettings.get()
+        serializer = PosSettingsSerializer(settings_obj)
+        return Response(serializer.data)
+
+
+@method_decorator(csrf_exempt, name='dispatch')
+class PosCompanyListView(APIView):
+    """GET /api/pos/companies/ — List B2B companies"""
+    permission_classes = [IsPosOperator]
+
+    def get(self, request):
+        companies = CompanyProfile.objects.all().order_by('name')
+        serializer = PosCompanyProfileSerializer(companies, many=True)
+        return Response(serializer.data)
+
+
+@method_decorator(csrf_exempt, name='dispatch')
+class PosCompanyCreateView(APIView):
+    """POST /api/pos/companies/ — Register B2B company"""
+    permission_classes = [IsPosOperator]
+
+    def post(self, request):
+        serializer = PosCompanyProfileSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        company = serializer.save()
+        return Response(PosCompanyProfileSerializer(company).data, status=status.HTTP_201_CREATED)
+
+
+@method_decorator(csrf_exempt, name='dispatch')
 class PosOrderCreateView(APIView):
     """POST /api/pos/orders/"""
     permission_classes = [IsPosOperator]
@@ -295,15 +334,42 @@ class PosOrderCreateView(APIView):
         # Resolve customer
         customer = None
         customer_id = data.get('customer_id')
-        if customer_id:
+        is_anonymous = data.get('is_anonymous', False)
+        if customer_id and not is_anonymous:
             try:
                 customer = PosCustomer.objects.get(id=customer_id)
             except (PosCustomer.DoesNotExist, Exception):
                 pass
 
+        # Resolve discount applied by
+        discount_applied_by = None
+        discount_by_id = data.get('discount_applied_by_id')
+        if discount_by_id:
+            try:
+                discount_applied_by = PosEmployee.objects.get(employee_id=discount_by_id)
+            except PosEmployee.DoesNotExist:
+                pass
+
+        # Resolve company for B2B
+        company = None
+        company_id = data.get('company_id')
+        is_b2b = data.get('is_b2b', False)
+        if is_b2b and company_id:
+            try:
+                company = CompanyProfile.objects.get(id=company_id)
+            except CompanyProfile.DoesNotExist:
+                pass
+
         # Determine payment method
         tenders = data.get('tenders', [])
         method = tenders[0]['method'] if len(tenders) == 1 else 'Split'
+
+        # Generate invoice number for B2B
+        invoice_number = ""
+        if is_b2b:
+            invoice_number = PosInvoiceCounter.next_invoice_number()
+
+        rounding_adjustment = Decimal(str(data.get('rounding_adjustment', 0)))
 
         with transaction.atomic():
             txn = PosTransaction.objects.create(
@@ -312,9 +378,18 @@ class PosOrderCreateView(APIView):
                 method=method,
                 subtotal=data['subtotal'],
                 member_discount=data.get('member_discount', 0),
+                manual_discount_percentage=data.get('manual_discount_percentage', 0),
+                manual_discount_amount=data.get('manual_discount_amount', 0),
+                discount_reason=data.get('discount_reason', ''),
+                discount_applied_by=discount_applied_by,
                 surcharge=data.get('surcharge', 0),
+                rounding_adjustment=rounding_adjustment,
                 total=data['total'],
                 receipt_delivery=data.get('receipt_delivery', ''),
+                is_anonymous=is_anonymous,
+                is_b2b=is_b2b,
+                company=company,
+                invoice_number=invoice_number,
             )
 
             # Create items
@@ -327,6 +402,7 @@ class PosOrderCreateView(APIView):
                     weighed=item.get('weighed', False),
                     quantity=Decimal(str(item['quantity'])),
                     member_eligible=item.get('member_eligible', False),
+                    gst_rate=Decimal(str(item.get('gst_rate', 18.0))),
                 )
 
                 # Deduct Stock from InventoryBatch
@@ -335,9 +411,6 @@ class PosOrderCreateView(APIView):
                         stock_level=F('stock_level') - Decimal(str(item['quantity']))
                     )
                 except Exception:
-                    # Log error but don't fail transaction? 
-                    # Usually better to fail if stock is critical, 
-                    # but here we allow it for now.
                     pass
 
             # Create tenders
@@ -356,6 +429,9 @@ class PosOrderCreateView(APIView):
                     Decimal(str(t['amount'])) for t in tenders if t['method'] == 'Cash'
                 )
                 shift.cash_sales += cash_amount
+            # Track rounding loss
+            if rounding_adjustment > 0:
+                shift.rounding_loss += rounding_adjustment
             shift.save()
 
         return Response(PosTransactionSerializer(txn).data, status=status.HTTP_201_CREATED)
