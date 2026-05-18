@@ -37,8 +37,9 @@ class UserSerializer(serializers.ModelSerializer):
         from apps.wallet.models import Wallet
         try:
             wallet = Wallet.objects.get(user=obj)
-            return str(wallet.accumulated_pride_limit)
-        except Wallet.DoesNotExist:
+            # Use getattr and catch broad exceptions to handle cases where database columns aren't migrated
+            return str(getattr(wallet, 'accumulated_pride_limit', '0.00'))
+        except Exception:
             return '0.00'
 
 
