@@ -20,6 +20,28 @@ from .serializers import (
 logger = logging.getLogger(__name__)
 
 
+def get_safe_wallet(user):
+    """
+    Safely get or create a Wallet object. If the database schema is not updated
+    (missing accumulated_pride_limit column), we defer it to avoid DB OperationalErrors.
+    """
+    try:
+        # Try standard select first
+        wallet, _ = Wallet.objects.get_or_create(user=user)
+        return wallet
+    except Exception:
+        # Fallback if accumulated_pride_limit column is missing in SQLite (staging/PA)
+        try:
+            wallet = Wallet.objects.only('id', 'user_id', 'balance', 'tier', 'created_at', 'updated_at').get(user=user)
+        except Wallet.DoesNotExist:
+            # Create a new wallet but only save safe fields to prevent save crash
+            wallet = Wallet(user=user, balance=Decimal('0.00'), tier='BRONZE')
+            wallet.save(update_fields=['user', 'balance', 'tier'])
+        
+        wallet.accumulated_pride_limit = Decimal('0.00')
+        return wallet
+
+
 class WalletViewSet(viewsets.ViewSet):
     """Wallet balance and top-up operations."""
     permission_classes = [IsAuthenticated]
@@ -27,21 +49,21 @@ class WalletViewSet(viewsets.ViewSet):
     @action(detail=False, methods=['get'])
     def balance(self, request):
         """Get current wallet balance."""
-        wallet, _ = Wallet.objects.get_or_create(user=request.user)
+        wallet = get_safe_wallet(request.user)
         serializer = WalletSerializer(wallet)
         return Response(serializer.data)
 
     @action(detail=False, methods=['get'])
     def detail(self, request):
         """Get detailed wallet info with recent transactions and partnership."""
-        wallet, _ = Wallet.objects.get_or_create(user=request.user)
+        wallet = get_safe_wallet(request.user)
         serializer = WalletDetailSerializer(wallet)
         return Response(serializer.data)
 
     @action(detail=False, methods=['get'])
     def history(self, request):
         """Get paginated wallet transaction history."""
-        wallet, _ = Wallet.objects.get_or_create(user=request.user)
+        wallet = get_safe_wallet(request.user)
         
         # Filters
         reason = request.query_params.get('reason')
@@ -71,7 +93,7 @@ class WalletViewSet(viewsets.ViewSet):
         serializer.is_valid(raise_exception=True)
         
         amount = serializer.validated_data['amount']
-        wallet, _ = Wallet.objects.get_or_create(user=request.user)
+        wallet = get_safe_wallet(request.user)
         
         # Initialize Razorpay client using settings
         from django.conf import settings
@@ -234,7 +256,7 @@ class WalletViewSet(viewsets.ViewSet):
     @action(detail=False, methods=['get'])
     def topup_history(self, request):
         """Get wallet top-up history."""
-        wallet, _ = Wallet.objects.get_or_create(user=request.user)
+        wallet = get_safe_wallet(request.user)
         topups = wallet.topups.all()
         
         serializer = WalletTopupSerializer(topups, many=True)
