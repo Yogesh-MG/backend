@@ -24,13 +24,22 @@ class CustomerSettingsSerializer(serializers.ModelSerializer):
 class UserSerializer(serializers.ModelSerializer):
     partnership = PartnershipSerializer(read_only=True)
     is_profile_complete = serializers.SerializerMethodField()
+    remaining_pride_limit = serializers.SerializerMethodField()
 
     class Meta:
         model = User
-        fields = ["id", "username", "email", "role", "is_verified", "partnership", "is_profile_complete", "first_name"]
+        fields = ["id", "username", "email", "role", "is_verified", "partnership", "is_profile_complete", "first_name", "remaining_pride_limit"]
 
     def get_is_profile_complete(self, obj):
         return hasattr(obj, 'delivery_partner_profile') or bool(obj.first_name)
+
+    def get_remaining_pride_limit(self, obj):
+        from apps.wallet.models import Wallet
+        try:
+            wallet = Wallet.objects.get(user=obj)
+            return str(wallet.accumulated_pride_limit)
+        except Wallet.DoesNotExist:
+            return '0.00'
 
 
 class SendOtpSerializer(serializers.Serializer):
@@ -65,6 +74,7 @@ class VerifyOtpSerializer(serializers.Serializer):
 class OtpResponseSerializer(serializers.Serializer):
     phone = serializers.CharField()
     message = serializers.CharField()
+    otp = serializers.CharField(required=False)
 
 
 class DeviceAuthKeyResponseSerializer(serializers.ModelSerializer):

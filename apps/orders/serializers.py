@@ -25,12 +25,14 @@ class OrderCreateSerializer(serializers.ModelSerializer):
         validated_data.pop('delivery_fee', None)
         validated_data.pop('total', None)
         validated_data.pop('is_paid', None)
+        validated_data.pop('member_discount', None)
+        validated_data.pop('pride_limit_used', None)
         user = validated_data.pop('user', self.context['request'].user)
         delivery_slot_type = validated_data.get('delivery_slot', 'EXPRESS')
 
         with transaction.atomic():
             # 1. Calculate Prices on Backend
-            subtotal = 0
+            subtotal = Decimal('0.00')
             order_items_to_create = []
 
             for item_data in items_data:
@@ -49,21 +51,41 @@ class OrderCreateSerializer(serializers.ModelSerializer):
                     'batch': batch,
                     'product_name': batch.variant.product.name,
                     'price': item_price,
+                    'purchase_price': batch.purchase_price,
                     'quantity': qty,
                     'unit': batch.variant.unit
                 })
 
             # 2. Get Delivery Fee from actual slot config (or simple logic for now)
-            delivery_fee = 25 if subtotal < 199 else 0
-            total = subtotal + delivery_fee
+            delivery_fee = Decimal('25.00') if subtotal < Decimal('199.00') else Decimal('0.00')
 
-            # 3. Handle Wallet Payment Deduction
+            # 3. Apply PRIDE discount limit (if user has PRIDE partnership)
+            from apps.wallet.models import Wallet
+            member_discount = Decimal('0.00')
+            pride_limit_used = Decimal('0.00')
+            try:
+                wallet = Wallet.objects.select_for_update().get(user=user)
+                has_partnership = hasattr(user, 'partnership') and user.partnership and not user.partnership.refund_requested
+                if has_partnership and wallet.accumulated_pride_limit > 0:
+                    # How much MRP can be discounted?
+                    discountable_mrp = min(subtotal, wallet.accumulated_pride_limit)
+                    member_discount = (discountable_mrp * Decimal('0.30')).quantize(Decimal('0.01'))
+                    pride_limit_used = discountable_mrp
+                    # Deduct the MRP value that got discounted from the limit
+                    wallet.accumulated_pride_limit -= discountable_mrp
+                    wallet.save(update_fields=['accumulated_pride_limit'])
+            except Wallet.DoesNotExist:
+                pass
+
+            total = subtotal + delivery_fee - member_discount
+
+            # 4. Handle Wallet Payment Deduction
             payment_method = validated_data.get('payment_method', 'UPI')
-            wallet_amount_used = 0
+            wallet_amount_used = Decimal('0.00')
             is_paid = False
 
             if payment_method == 'WALLET':
-                from apps.wallet.models import Wallet, WalletTransaction
+                from apps.wallet.models import WalletTransaction
                 try:
                     wallet = Wallet.objects.get(user=user)
                     if wallet.balance < total:
@@ -72,7 +94,6 @@ class OrderCreateSerializer(serializers.ModelSerializer):
                     # Record balance before deduction
                     balance_before = wallet.balance
                     wallet.balance -= total
-                    # Removing updated_at from update_fields as it might not exist in production schema yet
                     wallet.save(update_fields=['balance'])
                     
                     wallet_amount_used = total
@@ -90,12 +111,14 @@ class OrderCreateSerializer(serializers.ModelSerializer):
                 except Wallet.DoesNotExist:
                     raise serializers.ValidationError("No wallet found for this user. Please top up first.")
 
-            # 4. Create the Order with calculated values
+            # 5. Create the Order with calculated values
             order = Order.objects.create(
                 user=user,
                 subtotal=subtotal,
                 delivery_fee=delivery_fee,
                 total=total,
+                member_discount=member_discount,
+                pride_limit_used=pride_limit_used,
                 wallet_amount_used=wallet_amount_used,
                 is_paid=is_paid,
                 status='CONFIRMED',
@@ -110,7 +133,7 @@ class OrderCreateSerializer(serializers.ModelSerializer):
                     txn.related_order = order
                     txn.save(update_fields=['related_order'])
 
-            # 5. Create items and deduct stock
+            # 6. Create items and deduct stock
             for item in order_items_to_create:
                 batch = item.pop('batch')
                 qty = item['quantity']

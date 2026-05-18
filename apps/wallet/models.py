@@ -16,11 +16,32 @@ class Wallet(models.Model):
     balance = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal('0.00'))
     tier = models.CharField(max_length=20, choices=TIER_CHOICES, default='STANDARD')
     
+    # PRIDE limit tracking — accumulates monthly, never resets
+    accumulated_pride_limit = models.DecimalField(
+        max_digits=12, decimal_places=2, default=Decimal('0.00'),
+        help_text="Total MRP value the user can buy at PRIDE discount"
+    )
+    
     last_monthly_credit_date = models.DateTimeField(null=True, blank=True)
     last_loyalty_bonus_date = models.DateTimeField(null=True, blank=True)
     
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+
+    def get_monthly_pride_limit(self):
+        """Return the monthly PRIDE limit addition based on partnership tier."""
+        try:
+            partnership = self.user.partnership
+            if partnership.refund_requested:
+                return Decimal('0.00')
+            tier_limits = {
+                'TIER_1': Decimal('3000.00'),
+                'TIER_2': Decimal('6000.00'),
+                'TIER_3': Decimal('10000.00'),
+            }
+            return tier_limits.get(partnership.tier, Decimal('0.00'))
+        except:
+            return Decimal('0.00')
 
     def __str__(self):
         return f"{self.user.username}'s Wallet - ₹{self.balance}"

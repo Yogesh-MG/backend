@@ -11,6 +11,7 @@ from .views import (
     FarmerOrderListView,
     BankDetailsView,
     NotificationListView,
+    FarmerOrderDetailView,
 )
 
 urlpatterns = [

@@ -222,12 +222,12 @@ class FarmerDashboardView(APIView):
         # Count sold items from order_items linked to this farmer's batches
         sold_items = OrderItem.objects.filter(batch__farmer=profile)
         total_revenue = sold_items.aggregate(
-            total=Sum('price')
+            total=Sum('batch__purchase_price')
         )['total'] or 0
         monthly_items = sold_items.filter(order__created_at__gte=month_ago)
         weekly_items = sold_items.filter(order__created_at__gte=week_ago)
 
-        monthly_total = float(monthly_items.aggregate(t=Sum('price'))['t'] or 0)
+        monthly_total = float(monthly_items.aggregate(t=Sum('batch__purchase_price'))['t'] or 0)
         recent_payouts = [
             {
                 'id': str(p.id)[:8],
@@ -250,8 +250,8 @@ class FarmerDashboardView(APIView):
             'live_products': batches.filter(stock_level__gt=0).count(),
             'avg_rating': float(profile.rating),
             'total_orders': sold_items.values('order').distinct().count(),
-            'weekly_sales': float(weekly_items.aggregate(t=Sum('price'))['t'] or 0),
-            'monthly_sales': float(monthly_items.aggregate(t=Sum('price'))['t'] or 0),
+            'weekly_sales': float(weekly_items.aggregate(t=Sum('batch__purchase_price'))['t'] or 0),
+            'monthly_sales': float(monthly_items.aggregate(t=Sum('batch__purchase_price'))['t'] or 0),
             'pending_payouts': float(profile.payouts.filter(status='pending').aggregate(Sum('amount'))['amount__sum'] or 0),
             'unread_notifications_count': profile.notifications.filter(is_read=False).count(),
             'recent_transactions': recent_payouts,
@@ -314,7 +314,8 @@ class FarmerBatchListView(APIView):
         batch = InventoryBatch.objects.create(
             farmer=profile,
             variant=variant,
-            price=data['price'],
+            purchase_price=data['price'],
+            price=data.get('mrp') or (data['price'] * Decimal('1.25')),  # Default 25% markup if no MRP
             mrp=data.get('mrp'),
             stock_level=data['stock_level'],
             harvest_date=data['harvest_date'],
@@ -337,9 +338,11 @@ class FarmerBatchDetailView(APIView):
             batch = InventoryBatch.objects.get(id=batch_id, farmer=profile)
         except InventoryBatch.DoesNotExist:
             return Response({'error': 'Batch not found'}, status=status.HTTP_404_NOT_FOUND)
-        for field in ['price', 'mrp', 'stock_level', 'is_organic']:
+        for field in ['mrp', 'stock_level', 'is_organic']:
             if field in request.data:
                 setattr(batch, field, request.data[field])
+        if 'price' in request.data:
+            batch.purchase_price = request.data['price']
         batch.save()
         return Response(FarmerBatchSerializer(batch).data)
 
@@ -386,15 +389,15 @@ class FarmerOrderListView(APIView):
                 'tracking_id': order.tracking_id,
                 'customer_name': order.user.get_full_name() or order.user.username,
                 'status': order.status,
-                'total': float(sum(item.price * item.quantity for item in farmer_items)),
+                'total': float(sum((item.purchase_price or 0) * item.quantity for item in farmer_items)),
                 'created_at': order.created_at,
                 'items': [
                     {
                         'product_name': item.product_name,
                         'quantity': item.quantity,
                         'unit': item.unit,
-                        'price': float(item.price),
-                        'total': float(item.price * item.quantity),
+                        'price': float(item.purchase_price or 0),
+                        'total': float((item.purchase_price or 0) * item.quantity),
                     }
                     for item in farmer_items
                 ],

@@ -243,6 +243,7 @@ class PosTransaction(models.Model):
     method = models.CharField(max_length=20, choices=PAYMENT_METHODS, default='Cash')
     subtotal = models.DecimalField(max_digits=10, decimal_places=2)
     member_discount = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    pride_limit_used = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     manual_discount_percentage = models.DecimalField(max_digits=5, decimal_places=2, default=0, help_text="Manual discount % applied")
     manual_discount_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0, help_text="Manual discount amount in ₹")
     discount_reason = models.TextField(blank=True, help_text="Reason for manual discount")

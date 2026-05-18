@@ -53,7 +53,8 @@ class InventoryBatch(models.Model):
     farmer = models.ForeignKey('accounts.FarmerProfile', on_delete=models.CASCADE, related_name='inventory_batches')
     variant = models.ForeignKey(ProductVariant, on_delete=models.CASCADE, related_name='batches')
     
-    price = models.DecimalField(max_digits=10, decimal_places=2)
+    purchase_price = models.DecimalField(max_digits=10, decimal_places=2, help_text="Price FreshOn pays to the farmer")
+    price = models.DecimalField(max_digits=10, decimal_places=2, help_text="Selling price to the consumer")
     mrp = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
     stock_level = models.DecimalField(max_digits=10, decimal_places=3, default=0)
     

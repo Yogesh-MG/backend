@@ -100,13 +100,17 @@ class ReferralSerializer(serializers.ModelSerializer):
 class WalletDetailSerializer(serializers.ModelSerializer):
     """Comprehensive wallet details with recent transactions."""
     tier_display = serializers.CharField(source='get_tier_display', read_only=True)
+    remaining_pride_limit = serializers.SerializerMethodField()
     transactions = serializers.SerializerMethodField()
     partnership = PartnershipSerializer(source='user.partnership', read_only=True, allow_null=True)
     
     class Meta:
         model = Wallet
-        fields = ['balance', 'tier', 'tier_display', 'transactions', 'partnership', 'updated_at']
+        fields = ['balance', 'tier', 'tier_display', 'accumulated_pride_limit', 'remaining_pride_limit', 'transactions', 'partnership', 'updated_at']
         read_only_fields = fields
+    
+    def get_remaining_pride_limit(self, obj):
+        return float(obj.accumulated_pride_limit)
     
     def get_transactions(self, obj):
         """Get last 10 transactions."""

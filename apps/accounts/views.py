@@ -311,6 +311,9 @@ class SendOtpView(APIView):
             'phone': phone,
             'message': f'OTP sent to {phone}. Valid for 10 minutes.'
         }
+        if settings.DEBUG:
+            response_data['otp'] = otp.code
+
         serializer = OtpResponseSerializer(response_data)
         return Response(serializer.data, status=status.HTTP_200_OK)
 

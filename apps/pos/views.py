@@ -33,6 +33,7 @@ from rest_framework_simplejwt.tokens import RefreshToken
 
 from apps.accounts.models import User
 from apps.inventory.models import InventoryBatch
+from apps.wallet.models import Wallet
 from .models import (
     PosEmployee, PosCustomer, PosShift,
     PosTransaction, PosTransactionItem, PosTender, PosWastageLog,
@@ -391,6 +392,37 @@ class PosOrderCreateView(APIView):
             except (PosCustomer.DoesNotExist, Exception):
                 pass
 
+        # ── PRIDE Limit Validation ──
+        # If customer is a PRIDE member, validate member_discount against their limit
+        pride_limit_used = Decimal('0.00')
+        if customer and customer.user and customer.is_pride:
+            try:
+                wallet = Wallet.objects.select_for_update().get(user=customer.user)
+                gross_subtotal = sum(
+                    Decimal(str(item['unit_price'])) * Decimal(str(item['quantity']))
+                    for item in data['items']
+                )
+                # The limit caps how much MRP can be discounted
+                max_discountable = min(gross_subtotal, wallet.accumulated_pride_limit)
+                max_member_discount = (max_discountable * Decimal('0.30')).quantize(Decimal('0.01'))
+                submitted_member_discount = Decimal(str(data.get('member_discount', 0)))
+
+                if submitted_member_discount > max_member_discount:
+                    return Response({
+                        'error': f'PRIDE discount exceeds available limit. '
+                                 f'Max discount: ₹{max_member_discount}, '
+                                 f'Submitted: ₹{submitted_member_discount}, '
+                                 f'Remaining limit: ₹{wallet.accumulated_pride_limit}'
+                    }, status=status.HTTP_400_BAD_REQUEST)
+
+                # Deduct the MRP value that was discounted from the limit
+                if max_discountable > 0:
+                    pride_limit_used = max_discountable
+                    wallet.accumulated_pride_limit -= max_discountable
+                    wallet.save(update_fields=['accumulated_pride_limit'])
+            except Wallet.DoesNotExist:
+                pass
+
         # Resolve discount applied by
         discount_applied_by = None
         discount_by_id = data.get('discount_applied_by_id')
@@ -428,6 +460,7 @@ class PosOrderCreateView(APIView):
                 method=method,
                 subtotal=data['subtotal'],
                 member_discount=data.get('member_discount', 0),
+                pride_limit_used=pride_limit_used,
                 manual_discount_percentage=data.get('manual_discount_percentage', 0),
                 manual_discount_amount=data.get('manual_discount_amount', 0),
                 discount_reason=data.get('discount_reason', ''),
