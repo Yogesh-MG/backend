@@ -352,12 +352,43 @@ class Command(BaseCommand):
                     elif "Milk" in sub['name']: p_name = ["Cow Milk", "Buffalo Milk", "A2 Desi Milk"][i%3]
                     elif "Rice" in sub['name']: p_name = ["Sona Masuri", "Kolam Rice", "Brown Rice"][i%3]
                     
+                    # Dynamic organic impact scores based on category
+                    if cat_name == "Vegetables":
+                        water = random.uniform(10.0, 20.0)
+                        soil = random.uniform(2.0, 4.0)
+                        chem = random.uniform(5.0, 15.0)
+                        farm = random.uniform(3.0, 6.0)
+                    elif cat_name == "Fruits":
+                        water = random.uniform(15.0, 30.0)
+                        soil = random.uniform(1.5, 3.0)
+                        chem = random.uniform(8.0, 20.0)
+                        farm = random.uniform(4.0, 8.0)
+                    elif cat_name == "Dairy & Eggs":
+                        water = random.uniform(25.0, 50.0)
+                        soil = random.uniform(1.0, 2.5)
+                        chem = random.uniform(0.0, 2.0)
+                        farm = random.uniform(5.0, 10.0)
+                    elif "Grain" in cat_name or "Pulse" in cat_name:
+                        water = random.uniform(5.0, 15.0)
+                        soil = random.uniform(3.0, 6.0)
+                        chem = random.uniform(10.0, 25.0)
+                        farm = random.uniform(3.0, 7.0)
+                    else:
+                        water = random.uniform(2.0, 10.0)
+                        soil = random.uniform(0.5, 2.0)
+                        chem = random.uniform(1.0, 5.0)
+                        farm = random.uniform(1.0, 3.0)
+
                     prod = Product.objects.create(
                         category=cat_obj,
                         subcategory=sub_obj,
                         name=p_name,
                         description=f"Premium quality {p_name} harvested fresh for your kitchen.",
                         storage_instructions="Store in cool, dry conditions.",
+                        water_score=round(water, 2),
+                        soil_score=round(soil, 2),
+                        chemical_score=round(chem, 2),
+                        farmer_score=round(farm, 2)
                     )
                     
                     # Add image link (hack for ImageField)
@@ -467,12 +498,43 @@ class Command(BaseCommand):
             # Create or get product (group by product name)
             prod_key = f"{main_cat}_{sub_cat}_{prod_name}"
             if prod_key not in product_data:
+                # Dynamic organic impact scores based on category
+                if main_cat == "Vegetables":
+                    water = random.uniform(10.0, 20.0)
+                    soil = random.uniform(2.0, 4.0)
+                    chem = random.uniform(5.0, 15.0)
+                    farm = random.uniform(3.0, 6.0)
+                elif main_cat == "Fruits":
+                    water = random.uniform(15.0, 30.0)
+                    soil = random.uniform(1.5, 3.0)
+                    chem = random.uniform(8.0, 20.0)
+                    farm = random.uniform(4.0, 8.0)
+                elif "Dairy" in main_cat:
+                    water = random.uniform(25.0, 50.0)
+                    soil = random.uniform(1.0, 2.5)
+                    chem = random.uniform(0.0, 2.0)
+                    farm = random.uniform(5.0, 10.0)
+                elif "Grain" in main_cat or "Pulse" in main_cat:
+                    water = random.uniform(5.0, 15.0)
+                    soil = random.uniform(3.0, 6.0)
+                    chem = random.uniform(10.0, 25.0)
+                    farm = random.uniform(3.0, 7.0)
+                else:
+                    water = random.uniform(2.0, 10.0)
+                    soil = random.uniform(0.5, 2.0)
+                    chem = random.uniform(1.0, 5.0)
+                    farm = random.uniform(1.0, 3.0)
+
                 prod = Product.objects.create(
                     category=cat_obj,
                     subcategory=sub_obj,
                     name=prod_name,
                     description=f"Premium quality {prod_name} from FreshOn.in",
                     storage_instructions="Store in cool, dry conditions.",
+                    water_score=round(water, 2),
+                    soil_score=round(soil, 2),
+                    chemical_score=round(chem, 2),
+                    farmer_score=round(farm, 2)
                 )
                 
                 # Add image link

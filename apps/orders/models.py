@@ -63,6 +63,12 @@ class Order(models.Model):
     member_discount = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal('0.00'))
     pride_limit_used = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal('0.00'))
     
+    # Organic Impact Tracker Snapshot for this specific order
+    order_water = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal('0.00'))
+    order_soil = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal('0.00'))
+    order_chemical = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal('0.00'))
+    order_farmer = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal('0.00'))
+    
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='PENDING')
     
     created_at = models.DateTimeField(auto_now_add=True)

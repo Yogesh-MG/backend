@@ -4,6 +4,37 @@ from django.db import transaction
 from apps.inventory.models import InventoryBatch
 from .models import Order, OrderItem
 
+def get_organic_impact_data(order, user):
+    from apps.wallet.models import CustomerImpact
+    try:
+        impact = CustomerImpact.objects.get(user=user)
+        lifetime = {
+            "water": float(impact.total_water),
+            "soil": float(impact.total_soil),
+            "chemical": float(impact.total_chemical),
+            "farmers": float(impact.total_farmer),
+            "healthy_orders": impact.total_orders
+        }
+    except CustomerImpact.DoesNotExist:
+        lifetime = {
+            "water": 0.0,
+            "soil": 0.0,
+            "chemical": 0.0,
+            "farmers": 0.0,
+            "healthy_orders": 0
+        }
+
+    return {
+        "current_order": {
+            "water": float(order.order_water),
+            "soil": float(order.order_soil),
+            "chemical": float(order.order_chemical),
+            "farmers": float(order.order_farmer)
+        },
+        "lifetime": lifetime,
+        "message": "Your healthy choices continue supporting organic farming."
+    }
+
 class OrderItemSerializer(serializers.ModelSerializer):
     class Meta:
         model = OrderItem
@@ -11,15 +42,20 @@ class OrderItemSerializer(serializers.ModelSerializer):
 
 class OrderCreateSerializer(serializers.ModelSerializer):
     items = OrderItemSerializer(many=True)
+    organic_impact = serializers.SerializerMethodField(read_only=True)
 
     class Meta:
         model = Order
         fields = [
             'id', 'tracking_id', 'address_title', 'address_line', 'delivery_slot', 
             'payment_method', 'items', 'subtotal', 'delivery_fee', 'total', 'is_paid',
-            'wallet_amount_used', 'remaining_amount'
+            'wallet_amount_used', 'remaining_amount', 'organic_impact'
         ]
         read_only_fields = ['id', 'tracking_id', 'subtotal', 'delivery_fee', 'total']
+
+    def get_organic_impact(self, obj):
+        user = self.context['request'].user if 'request' in self.context else obj.user
+        return get_organic_impact_data(obj, user)
 
     def create(self, validated_data):
         items_data = validated_data.pop('items')
@@ -144,7 +180,12 @@ class OrderCreateSerializer(serializers.ModelSerializer):
                     notes=f"Wallet split payment for order {order.tracking_id}"
                 )
 
-            # 6. Create items and deduct stock
+            # 6. Create items, deduct stock, and calculate organic impact
+            order_water = Decimal('0.00')
+            order_soil = Decimal('0.00')
+            order_chemical = Decimal('0.00')
+            order_farmer = Decimal('0.00')
+
             for item in order_items_to_create:
                 batch = item.pop('batch')
                 qty = item['quantity']
@@ -152,16 +193,45 @@ class OrderCreateSerializer(serializers.ModelSerializer):
                 batch.stock_level -= qty
                 batch.save()
                 
+                # Dynamic organic impact calculation
+                product = batch.variant.product
+                order_water += product.water_score * qty
+                order_soil += product.soil_score * qty
+                order_chemical += product.chemical_score * qty
+                order_farmer += product.farmer_score * qty
+                
                 OrderItem.objects.create(order=order, batch=batch, **item)
+
+            # Update the order with calculated impact scores
+            order.order_water = order_water
+            order.order_soil = order_soil
+            order.order_chemical = order_chemical
+            order.order_farmer = order_farmer
+            order.save(update_fields=['order_water', 'order_soil', 'order_chemical', 'order_farmer'])
+
+            # Update or create customer lifetime impact record
+            from apps.wallet.models import CustomerImpact
+            impact, _ = CustomerImpact.objects.get_or_create(user=user)
+            impact.total_water += order_water
+            impact.total_soil += order_soil
+            impact.total_chemical += order_chemical
+            impact.total_farmer += order_farmer
+            impact.total_orders += 1
+            impact.save()
 
             return order
 
 class OrderDetailSerializer(serializers.ModelSerializer):
     items = serializers.SerializerMethodField()
+    organic_impact = serializers.SerializerMethodField(read_only=True)
 
     class Meta:
         model = Order
         fields = '__all__'
+
+    def get_organic_impact(self, obj):
+        user = self.context['request'].user if 'request' in self.context else obj.user
+        return get_organic_impact_data(obj, user)
 
     def get_items(self, obj):
         from apps.inventory.serializers import InventoryBatchSerializer

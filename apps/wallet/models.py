@@ -169,3 +169,22 @@ class Referral(models.Model):
     class Meta:
         ordering = ['-created_at']
         unique_together = ['referrer', 'referee']
+
+
+class CustomerImpact(models.Model):
+    """Cumulative, lifetime positive impact metrics for a conscious consumer."""
+    user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='impact')
+    total_water = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal('0.00'))
+    total_soil = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal('0.00'))
+    total_chemical = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal('0.00'))
+    total_farmer = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal('0.00'))
+    total_orders = models.PositiveIntegerField(default=0)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"{self.user.username}'s Impact (Water: {self.total_water}L, Orders: {self.total_orders})"
+
+    class Meta:
+        ordering = ['-updated_at']

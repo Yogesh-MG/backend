@@ -152,19 +152,27 @@ class WalletViewSet(viewsets.ViewSet):
             razorpay_client = razorpay.Client(auth=(settings.RAZORPAY_KEY_ID, settings.RAZORPAY_KEY_SECRET))
 
             with transaction.atomic():
-                # Fetch topup and lock it for processing
+                # Fetch topup and lock it for processing without querying/joining the wallet table
                 try:
-                    topup = WalletTopup.objects.select_for_update().get(id=topup_id, wallet__user=request.user)
+                    topup = WalletTopup.objects.select_for_update().get(id=topup_id)
                 except WalletTopup.DoesNotExist:
                     logger.warning(f"Top-up record not found: topup_id={topup_id}, user={request.user.id}")
                     return Response({'error': 'Top-up record not found'}, status=status.HTTP_404_NOT_FOUND)
+
+                # Safely fetch the wallet for the current user (resilient to missing columns on PythonAnywhere)
+                safe_wallet = get_safe_wallet(request.user)
+
+                # Verify ownership of the top-up transaction
+                if topup.wallet_id != safe_wallet.id:
+                    logger.warning(f"Unauthorized top-up attempt: topup_id={topup_id}, user={request.user.id}")
+                    return Response({'error': 'Unauthorized'}, status=status.HTTP_403_FORBIDDEN)
 
                 # 1. Idempotency Check: Don't process if already successful
                 if topup.status == 'SUCCESS':
                     return Response({
                         'status': 'success',
                         'message': 'This top-up was already processed.',
-                        'new_balance': float(topup.wallet.balance)
+                        'new_balance': float(safe_wallet.balance)
                     })
 
                 # 2. Verify Signature with Razorpay
@@ -218,7 +226,7 @@ class WalletViewSet(viewsets.ViewSet):
                 topup.save()
                 
                 # 5. Credit wallet with atomicity
-                wallet = topup.wallet
+                wallet = safe_wallet
                 balance_before = wallet.balance
                 wallet.balance += topup.amount
                 wallet.save(update_fields=['balance'])

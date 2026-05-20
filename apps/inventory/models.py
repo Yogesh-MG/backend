@@ -32,6 +32,13 @@ class Product(models.Model):
     description = models.TextField()
     storage_instructions = models.TextField(help_text="Storage tips for customers")
     base_image = models.ImageField(upload_to='products/', null=True, blank=True)
+    
+    # Impact scores (Organic Impact Tracker)
+    water_score = models.DecimalField(max_digits=10, decimal_places=2, default=0.00, help_text="Water saved/protected in litres per unit")
+    soil_score = models.DecimalField(max_digits=10, decimal_places=2, default=0.00, help_text="Soil supported in sq.ft per unit")
+    chemical_score = models.DecimalField(max_digits=10, decimal_places=2, default=0.00, help_text="Harmful chemicals reduced in grams per unit")
+    farmer_score = models.DecimalField(max_digits=10, decimal_places=2, default=0.00, help_text="Farmer support score per unit")
+    
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
