@@ -3,8 +3,9 @@ from rest_framework.response import Response
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.decorators import action
 from django.shortcuts import get_object_or_404
-from .models import Order
-from .serializers import OrderCreateSerializer, OrderDetailSerializer
+from django.db.models import Prefetch
+from .models import Order, OrderItem
+from .serializers import OrderCreateSerializer, OrderDetailSerializer, OrderListSerializer
 from .order_modification import OrderModificationService
 
 
@@ -21,13 +22,38 @@ class OrderViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         # Users can only see their own orders
+        # Optimize with nested prefetch to avoid N+1 queries
+        items_prefetch = Prefetch(
+            'items',
+            queryset=OrderItem.objects.select_related(
+                'batch',
+                'batch__variant',
+                'batch__variant__product',
+                'batch__variant__product__category',
+                'batch__farmer',
+                'batch__farmer__user'
+            )
+        )
+        
+        # Prefetch customer impact to avoid N+1 on organic_impact calculation
+        from apps.wallet.models import CustomerImpact
+        impact_prefetch = Prefetch(
+            'user__customerimpact_set',
+            queryset=CustomerImpact.objects.all()
+        )
+        
         return Order.objects.filter(
             user=self.request.user
-        ).prefetch_related('items').order_by('-created_at')
+        ).prefetch_related(
+            items_prefetch,
+            impact_prefetch
+        ).order_by('-created_at')
 
     def get_serializer_class(self):
         if self.action == 'create':
             return OrderCreateSerializer
+        if self.action == 'list':
+            return OrderListSerializer  # Lightweight serializer for list views
         return OrderDetailSerializer
 
     def perform_create(self, serializer):

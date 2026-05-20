@@ -5,24 +5,27 @@ from apps.inventory.models import InventoryBatch
 from .models import Order, OrderItem
 
 def get_organic_impact_data(order, user):
+    """Get organic impact data, using prefetched cache when available to avoid N+1 queries."""
     from apps.wallet.models import CustomerImpact
+    
+    # Try to use prefetched cache first (set in OrderViewSet.get_queryset)
+    impact = None
     try:
-        impact = CustomerImpact.objects.get(user=user)
-        lifetime = {
-            "water": float(impact.total_water),
-            "soil": float(impact.total_soil),
-            "chemical": float(impact.total_chemical),
-            "farmers": float(impact.total_farmer),
-            "healthy_orders": impact.total_orders
-        }
+        impact_set = user.customerimpact_set.all()
+        if hasattr(impact_set, '_result_cache'):  # Prefetch was used
+            impact = impact_set.first() if impact_set.exists() else None
+        else:  # Fallback to direct query if prefetch wasn't used
+            impact = CustomerImpact.objects.get(user=user)
     except CustomerImpact.DoesNotExist:
-        lifetime = {
-            "water": 0.0,
-            "soil": 0.0,
-            "chemical": 0.0,
-            "farmers": 0.0,
-            "healthy_orders": 0
-        }
+        impact = None
+    
+    lifetime = {
+        "water": float(impact.total_water) if impact else 0.0,
+        "soil": float(impact.total_soil) if impact else 0.0,
+        "chemical": float(impact.total_chemical) if impact else 0.0,
+        "farmers": float(impact.total_farmer) if impact else 0.0,
+        "healthy_orders": impact.total_orders if impact else 0
+    }
 
     return {
         "current_order": {
@@ -39,6 +42,19 @@ class OrderItemSerializer(serializers.ModelSerializer):
     class Meta:
         model = OrderItem
         fields = ['batch', 'quantity']
+
+class OrderListSerializer(serializers.ModelSerializer):
+    """Lightweight serializer for list/admin views - minimal nested data."""
+    user_name = serializers.CharField(source='user.get_full_name')
+    items_count = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = Order
+        fields = ['id', 'tracking_id', 'user_name', 'status', 'total', 'delivery_slot', 'created_at', 'items_count']
+    
+    def get_items_count(self, obj):
+        # Uses prefetched cache
+        return obj.items.count()
 
 class OrderCreateSerializer(serializers.ModelSerializer):
     items = OrderItemSerializer(many=True)

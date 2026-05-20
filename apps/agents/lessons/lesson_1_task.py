@@ -142,32 +142,30 @@ OLLAMA_URL = "http://localhost:11434/api/chat"
 MODEL_NAME = "llama3.2:3b"
 
 def ask_freshon(system_prompt: str, user_question: str) -> str:
-    
-    payload = {
-        "model": MODEL_NAME,
-        "message": [
-        system_prompt,
-        user_question
-        ],
-        "stream": True
-
-        response = request.post(
-            OLLAMA_URL,
-            json=payload,
-            timeout=120
-        )
-    }
-
-
-def ask_freshon(system_prompt: str, user_question: str) -> str:
     """
     YOUR CODE HERE: Build payload, send to Ollama, return the reply.
     """
     # Step 1: Build the payload dict with "model", "messages", "stream"
+    payload = {
+        "model": MODEL_NAME,
+        "messages": [
+            {   "role":"system",
+                "content":system_prompt
+            },
+            {   "role":"user",
+                "content":user_question
+            }
+        ],
+        "stream":False
+    }
     # Step 2: requests.post(OLLAMA_URL, json=payload, timeout=120)
+    response = requests.post(OLLAMA_URL, json=payload, timeout=120)
     # Step 3: Parse response.json() and return data["message"]["content"]
-    pass  # Remove this line and write your code
+    data = response.json()
 
+    ai_reply = data['message']['content']
+
+    return ai_reply
 
 def challenge_3():
     print("\n" + "=" * 60)
