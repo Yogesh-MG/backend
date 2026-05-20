@@ -16,7 +16,8 @@ from apps.delivery.models import DeliveryAddress
 from apps.delivery.serializers import DeliveryAddressSerializer
 from .serializers import (
     CustomerPreferencesSerializer, CustomerSettingsSerializer, UserSerializer,
-    SendOtpSerializer, VerifyOtpSerializer, OtpResponseSerializer, AuthResponseSerializer
+    SendOtpSerializer, VerifyOtpSerializer, OtpResponseSerializer, AuthResponseSerializer,
+    CompleteProfileSerializer
 )
 
 
@@ -423,3 +424,31 @@ class VerifyOtpView(APIView):
         _set_auth_cookies(response, str(refresh.access_token), str(refresh), is_app_request=not is_consumer)
         
         return response
+
+
+@method_decorator(csrf_exempt, name='dispatch')
+class CompleteProfileView(APIView):
+    """First-time profile completion — collect name, DOB, email after OTP login."""
+    permission_classes = [IsAuthenticated]
+
+    def patch(self, request):
+        serializer = CompleteProfileSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        user = request.user
+        data = serializer.validated_data
+
+        user.first_name = data['first_name']
+        user.last_name = data.get('last_name', '')
+        if data.get('email'):
+            user.email = data['email']
+        if data.get('date_of_birth'):
+            user.date_of_birth = data['date_of_birth']
+
+        user.save(update_fields=['first_name', 'last_name', 'email', 'date_of_birth'])
+
+        return Response({
+            'message': 'Profile completed successfully',
+            'user': UserSerializer(user).data,
+        })

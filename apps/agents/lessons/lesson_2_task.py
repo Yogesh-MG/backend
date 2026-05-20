@@ -21,6 +21,7 @@ When all 3 challenges pass, you've mastered Lesson 2!
 """
 
 import requests
+import requests
 import json
 import sys
 import io
@@ -91,7 +92,11 @@ def get_order(order_id: str) -> dict:
 
 def get_farmer_info(farmer_name: str) -> dict:
     """YOUR CODE HERE: Look up farmer by name in FAKE_FARMERS."""
-    pass  # Remove this and write your code
+    farmer_name = farmer_name.lower()
+    farmer = FAKE_FARMERS.get(farmer_name)
+    if farmer:
+        return {"found":True, **farmer}
+    return {"found":False, "error": f"Farmer not found with given name {farmer_name}"}
 
 
 def challenge_1():
@@ -150,8 +155,20 @@ def challenge_1():
 
 # YOUR CODE HERE: Define TOOL_REGISTRY with both tools
 TOOL_REGISTRY = {
-    # "get_order": { ... },
-    # "get_farmer_info": { ... },
+    "get_order": { 
+        "function": get_order,
+        "description": "Look up the order details with the order_id (eg..FO-2002)",
+        "parameters": {
+            "order_id": "The order ID to look up (string, e.g., 'FO-1001')"
+        }
+     },
+    "get_farmer_info": { 
+        "function": get_farmer_info,
+        "description": "Look up the farmer information with the name (eg..ramesh)",
+        "parameters": {
+            "farmer_name":"The name of farmer to look up (string, e.g., 'ramesh')"
+        }
+     },
 }
 
 
@@ -167,8 +184,21 @@ def format_tools_for_prompt() -> str:
       To use a tool, respond with:
       TOOL_CALL: {"tool": "tool_name", "args": {"param": "value"}}
     """
-    pass  # Remove this and write your code
-
+    lines = ["You have the following tools available:\n"]
+    for name, info in TOOL_REGISTRY.items():
+        params = ", ".join(f'{k}: {v}' for k, v in info['parameters'].items())
+        lines.append(f"  - {name}({params}): {info['description']}")
+    lines.append(
+        '\nTo use a tool, you MUST respond with ONLY this JSON on a single line, nothing else:'
+        '\nTOOL_CALL: {"tool": "tool_name", "args": {"param": "value"}}'
+        '\n\nExamples:'
+        '\nTOOL_CALL: {"tool": "get_order", "args": {"order_id": "FO-1001"}}'
+        '\nTOOL_CALL: {"tool": "get_farmer_info", "args": {"farmer_name": "ramesh"}}'
+        '\n\nIf no tool is needed, respond normally with text (no TOOL_CALL prefix).'
+        '\nAfter receiving a tool result, answer the user naturally using that data.'
+        '\nNEVER make up data. ALWAYS use a tool if you need factual information.'
+    )
+    return "\n".join(lines)
 
 def challenge_2():
     print("\n" + "=" * 60)
@@ -309,8 +339,57 @@ def agent_ask(user_message: str) -> str:
 
     Return the final answer string.
     """
-    pass  # Remove this and write your code
+    system = SYSTEM_PROMPT.format(tools=format_tools_for_prompt())
+    messages = [
+        {"role":"system","content":system},
+        {"role":"user","content":user_message}
+    ]
+    payload = {"model": MODEL_NAME, "messages": messages, "stream": False}
+    response = requests.post(OLLAMA_URL, json=payload, timeout=120)
+    data = response.json()
+    ai_reply = data['message']['content']
 
+    print(f"[ AI Raw response ] --- {ai_reply} /n")
+
+    tool_call = extract_tool_call(ai_reply)
+    
+    if tool_call:
+        tool_name = tool_call["tool"]
+        tool_args = tool_call.get("args", {})
+        
+        print(f"[TOOL CALL DETECTED] {tool_name}({tool_args})")
+        
+        # --- STEP 3: Execute the tool ---
+        if tool_name in TOOL_REGISTRY:
+            tool_fn = TOOL_REGISTRY[tool_name]["function"]
+            result = tool_fn(**tool_args)
+            result_str = json.dumps(result, indent=2, ensure_ascii=False)
+            
+            print(f"[TOOL RESULT]:\n{result_str}\n")
+            
+            # --- STEP 4: Feed result back to LLM for final answer ---
+            messages.append({"role": "assistant", "content": ai_reply})
+            messages.append({
+                "role": "user",
+                "content": f"Tool result for {tool_name}:\n{result_str}\n\nNow answer the customer's original question using this data."
+            })
+            
+            print("[STEP 4] Sending tool result back to LLM for final answer...")
+            
+            payload2 = {"model": MODEL_NAME, "messages": messages, "stream": False}
+            response2 = requests.post(OLLAMA_URL, json=payload2, timeout=120)
+            final_reply = response2.json()["message"]["content"]
+            
+            print(f"\n[FINAL ANSWER]: {final_reply}")
+            return final_reply
+        else:
+            error_msg = f"Unknown tool: {tool_name}"
+            print(f"[ERROR] {error_msg}")
+            return error_msg
+    else:
+        # No tool needed — AI answered directly
+        print(f"[DIRECT ANSWER] (no tool needed): {ai_reply}")
+        return ai_reply
 
 def challenge_3():
     print("\n" + "=" * 60)

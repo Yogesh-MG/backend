@@ -28,7 +28,7 @@ class UserSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = User
-        fields = ["id", "username", "email", "role", "is_verified", "partnership", "is_profile_complete", "first_name", "remaining_pride_limit"]
+        fields = ["id", "username", "email", "role", "is_verified", "partnership", "is_profile_complete", "first_name", "last_name", "date_of_birth", "phone_number", "remaining_pride_limit"]
 
     def get_is_profile_complete(self, obj):
         return hasattr(obj, 'delivery_partner_profile') or bool(obj.first_name)
@@ -88,3 +88,11 @@ class AuthResponseSerializer(serializers.Serializer):
     device_auth_key = serializers.CharField()
     device_auth_key_expires = serializers.CharField()
     user = UserSerializer()
+
+
+class CompleteProfileSerializer(serializers.Serializer):
+    """Validates first-time profile completion data."""
+    first_name = serializers.CharField(max_length=100)
+    last_name = serializers.CharField(max_length=100, required=False, allow_blank=True)
+    email = serializers.EmailField(required=False, allow_blank=True)
+    date_of_birth = serializers.DateField(required=False, allow_null=True)

@@ -2,7 +2,7 @@
 from django.urls import path
 from .views import (
     CookieTokenObtainView, CookieTokenRefreshView, CookieLogoutView, CurrentUserView, RegisterView, 
-    CustomerProfileDataView, SendOtpView, VerifyOtpView
+    CustomerProfileDataView, SendOtpView, VerifyOtpView, CompleteProfileView
 )
 
 urlpatterns = [
@@ -14,4 +14,5 @@ urlpatterns = [
     path('profile-data/', CustomerProfileDataView.as_view(), name='customer_profile_data'),
     path('send-otp/', SendOtpView.as_view(), name='send_otp'),
     path('verify-otp/', VerifyOtpView.as_view(), name='verify_otp'),
+    path('complete-profile/', CompleteProfileView.as_view(), name='complete_profile'),
 ]

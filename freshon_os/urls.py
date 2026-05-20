@@ -35,6 +35,8 @@ urlpatterns = [
     path("api/pos/", include("apps.pos.urls")),
     # Notifications API
     path("api/notifications/", include("apps.notifications.urls")),
+    # AI Agents API
+    path("api/agents/", include("apps.agents.urls")),
 ]
 
 if settings.DEBUG:

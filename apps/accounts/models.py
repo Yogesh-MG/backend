@@ -19,6 +19,7 @@ class User(AbstractUser):
         default=Role.CUSTOMER
     )
     phone_number = models.CharField(max_length=15, unique=True, null=True, blank=True)
+    date_of_birth = models.DateField(null=True, blank=True)
     is_verified = models.BooleanField(default=False)
 
     def __str__(self):
