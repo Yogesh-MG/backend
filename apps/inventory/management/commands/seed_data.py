@@ -401,9 +401,12 @@ class Command(BaseCommand):
                     base_price = random.randint(20, 150)
                     for unit_name, multiplier in variant_set:
                         price = int(base_price * multiplier)
+                        mrp = int(price * 1.2)
                         v = ProductVariant.objects.create(
                             product=prod,
                             unit=unit_name,
+                            price=price,
+                            mrp=mrp,
                             is_active=True
                         )
                         
@@ -411,8 +414,6 @@ class Command(BaseCommand):
                         InventoryBatch.objects.create(
                             farmer=random.choice(farmer_profiles),
                             variant=v,
-                            price=price,
-                            mrp=int(price * 1.2),
                             purchase_price=int(price * 0.75),
                             stock_level=random.randint(5, 100),
                             harvest_date=timezone.now() - timezone.timedelta(days=random.randint(0, 3)),
@@ -553,10 +554,15 @@ class Command(BaseCommand):
 
             # Create variant for this gramage/size
             base_price = random.randint(50, 500)
+            mrp = int(base_price * 1.3)
             variant, created = ProductVariant.objects.get_or_create(
                 product=prod,
                 unit=gramage,
-                defaults={"is_active": True}
+                defaults={
+                    "price": base_price,
+                    "mrp": mrp,
+                    "is_active": True
+                }
             )
             
             if created:
@@ -564,8 +570,6 @@ class Command(BaseCommand):
                 InventoryBatch.objects.create(
                     farmer=random.choice(farmer_profiles),
                     variant=variant,
-                    price=base_price,
-                    mrp=int(base_price * 1.3),
                     purchase_price=int(base_price * 0.75),
                     stock_level=random.randint(10, 200),
                     harvest_date=timezone.now() - timezone.timedelta(days=random.randint(0, 3)),

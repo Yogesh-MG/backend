@@ -48,7 +48,7 @@ class BenefitSerializer(serializers.ModelSerializer):
 class ProductVariantSerializer(serializers.ModelSerializer):
     class Meta:
         model = ProductVariant
-        fields = ['id', 'unit', 'is_active']
+        fields = ['id', 'unit', 'price', 'mrp', 'is_active']
 
 class ProductSerializer(serializers.ModelSerializer):
     benefits = serializers.SlugRelatedField(many=True, read_only=True, slug_field='benefit')
@@ -74,6 +74,8 @@ class InventoryBatchSerializer(serializers.ModelSerializer):
     base_image = serializers.ImageField(source='variant.product.base_image', read_only=True)
     farmer = FarmerSerializer(read_only=True)
     harvest_date_display = serializers.SerializerMethodField()
+    price = serializers.DecimalField(source='variant.price', max_digits=10, decimal_places=2, read_only=True)
+    mrp = serializers.DecimalField(source='variant.mrp', max_digits=10, decimal_places=2, read_only=True)
     
     class Meta:
         model = InventoryBatch

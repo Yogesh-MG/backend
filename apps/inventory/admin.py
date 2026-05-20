@@ -30,15 +30,19 @@ class ProductAdmin(admin.ModelAdmin):
 
 @admin.register(ProductVariant)
 class ProductVariantAdmin(admin.ModelAdmin):
-    list_display = ('product', 'unit', 'is_active')
+    list_display = ('product', 'unit', 'price', 'mrp', 'is_active')
     list_filter = ('is_active', 'unit')
     search_fields = ('product__name', 'unit')
 
 @admin.register(InventoryBatch)
 class InventoryBatchAdmin(admin.ModelAdmin):
-    list_display = ('variant', 'farmer', 'stock_level', 'price', 'harvest_date')
+    list_display = ('variant', 'farmer', 'stock_level', 'purchase_price', 'get_retail_price', 'harvest_date')
     list_filter = ('is_organic', 'is_farm_fresh', 'harvest_date')
     search_fields = ('variant__product__name', 'farmer__user__username')
+
+    def get_retail_price(self, obj):
+        return obj.variant.price
+    get_retail_price.short_description = "Retail Price"
 
 @admin.register(ProductBenefit)
 class ProductBenefitAdmin(admin.ModelAdmin):

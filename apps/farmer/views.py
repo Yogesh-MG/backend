@@ -359,12 +359,17 @@ class FarmerBatchListView(APIView):
         variant = product.variants.first()
         if not variant:
             variant = ProductVariant.objects.create(product=product, unit='1 kg')
+        
+        # Save price and mrp on the variant itself
+        price_val = data.get('mrp') or (data['price'] * Decimal('1.25'))
+        variant.price = price_val
+        variant.mrp = data.get('mrp')
+        variant.save(update_fields=['price', 'mrp'])
+
         batch = InventoryBatch.objects.create(
             farmer=profile,
             variant=variant,
             purchase_price=data['price'],
-            price=data.get('mrp') or (data['price'] * Decimal('1.25')),  # Default 25% markup if no MRP
-            mrp=data.get('mrp'),
             stock_level=data['stock_level'],
             harvest_date=data['harvest_date'],
             is_organic=data.get('is_organic', False),
@@ -386,11 +391,17 @@ class FarmerBatchDetailView(APIView):
             batch = InventoryBatch.objects.get(id=batch_id, farmer=profile)
         except InventoryBatch.DoesNotExist:
             return Response({'error': 'Batch not found'}, status=status.HTTP_404_NOT_FOUND)
-        for field in ['mrp', 'stock_level', 'is_organic']:
+        for field in ['stock_level', 'is_organic']:
             if field in request.data:
                 setattr(batch, field, request.data[field])
+        if 'mrp' in request.data:
+            batch.variant.mrp = request.data['mrp']
+            batch.variant.save(update_fields=['mrp'])
         if 'price' in request.data:
             batch.purchase_price = request.data['price']
+            # Optionally update retail price when farmer updates purchase_price
+            batch.variant.price = Decimal(request.data['price']) * Decimal('1.25')
+            batch.variant.save(update_fields=['price'])
         batch.save()
         return Response(FarmerBatchSerializer(batch).data)
 
