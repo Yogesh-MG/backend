@@ -51,14 +51,14 @@ class OrderModificationService:
             raise ValueError(f"Insufficient stock. Available: {batch.stock_level}")
         
         # Create or increment order item
-        item_total = batch.price * Decimal(quantity)
+        item_total = batch.variant.price * Decimal(quantity)
         
         order_item, created = OrderItem.objects.get_or_create(
             order=order,
             batch=batch,
             defaults={
                 'product_name': batch.variant.product.name or "Fresh Produce",
-                'price': batch.price,
+                'price': batch.variant.price,
                 'quantity': quantity,
                 'unit': batch.variant.unit or "kg"
             }
@@ -88,7 +88,7 @@ class OrderModificationService:
             "order_item_id": order_item.id,
             "product_name": order_item.product_name,
             "quantity": quantity,
-            "price": float(batch.price),
+            "price": float(batch.variant.price),
             "total": float(item_total),
             "new_order_total": float(order.total),
             "wallet_transaction": {

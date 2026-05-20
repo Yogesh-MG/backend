@@ -84,7 +84,7 @@ class OrderCreateSerializer(serializers.ModelSerializer):
                 if batch.stock_level < qty:
                     raise serializers.ValidationError(f"Only {batch.stock_level} units of {batch.variant.product.name} are available.")
 
-                item_price = batch.price
+                item_price = batch.variant.price
                 subtotal += item_price * qty
 
                 # Prepare item for creation (snapshotting)

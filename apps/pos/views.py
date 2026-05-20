@@ -223,7 +223,7 @@ class PosProductsView(APIView):
             products.append({
                 'pid': str(batch.id),
                 'name': f"{product.name} ({batch.variant.unit})",
-                'price': float(batch.price),
+                'price': float(batch.variant.price),
                 'weighed': 'kg' in batch.variant.unit.lower() or 'g' in batch.variant.unit.lower(),
                 'category': product.category.name if product.category else '',
                 'stock': batch.stock_level,

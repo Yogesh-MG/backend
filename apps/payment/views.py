@@ -42,7 +42,7 @@ class RazorpayInitializeView(APIView):
                 
                 try:
                     batch = InventoryBatch.objects.get(id=batch_id)
-                    subtotal += batch.price * quantity
+                    subtotal += batch.variant.price * quantity
                 except InventoryBatch.DoesNotExist:
                     continue # Or raise error
             
