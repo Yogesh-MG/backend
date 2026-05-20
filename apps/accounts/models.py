@@ -126,6 +126,8 @@ class FarmerProfile(models.Model):
     organic_pledge_signature = models.CharField(max_length=255, blank=True)
     organic_pledge_accepted_at = models.DateTimeField(null=True, blank=True)
     preferred_language = models.CharField(max_length=10, default='en')
+    fcm_token = models.TextField(blank=True, help_text="Firebase Cloud Messaging token for push notifications")
+    fcm_token_updated_at = models.DateTimeField(null=True, blank=True)
 
     def __str__(self):
         return f"Farmer: {self.user.get_full_name() or self.user.username}"

@@ -35,6 +35,7 @@ ALLOWED_HOSTS = config("ALLOWED_HOSTS", default="*", cast=Csv())
 # Application definition
 
 INSTALLED_APPS = [
+    "daphne",  # Must be first for Django Channels
     "django.contrib.admin",
     "django.contrib.auth",
     "django.contrib.contenttypes",
@@ -59,6 +60,8 @@ INSTALLED_APPS = [
     "apps.delivery_partner",
     "apps.farmer",
     "apps.pos",
+    "apps.notifications",
+    "apps.agents",
 ]
 
 MIDDLEWARE = [
@@ -90,6 +93,7 @@ TEMPLATES = [
 ]
 
 WSGI_APPLICATION = "freshon_os.wsgi.application"
+ASGI_APPLICATION = "freshon_os.asgi.application"
 
 
 # Database
@@ -217,3 +221,31 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 # Razorpay Configuration
 RAZORPAY_KEY_ID = config("RAZORPAY_KEY_ID", default="")
 RAZORPAY_KEY_SECRET = config("RAZORPAY_KEY_SECRET", default="")
+
+# ─── Django Channels & WebSockets ───────────────────────────────────────
+
+CHANNEL_LAYERS = {
+    "default": {
+        "BACKEND": "channels_redis.core.RedisChannelLayer",
+        "CONFIG": {
+            "hosts": [(config("REDIS_HOST", default="localhost"), config("REDIS_PORT", default=6379, cast=int))],
+        },
+    },
+}
+
+# For development without Redis, use InMemoryChannelLayer
+if DEBUG and config("USE_INMEMORY_CHANNELS", default=True, cast=bool):
+    CHANNEL_LAYERS["default"] = {
+        "BACKEND": "channels.layers.InMemoryChannelLayer"
+    }
+
+# ─── Web Push (VAPID) Configuration ─────────────────────────────────────
+
+WEBPUSH_VAPID_PRIVATE_KEY = config("WEBPUSH_VAPID_PRIVATE_KEY", default="")
+WEBPUSH_VAPID_PUBLIC_KEY = config("WEBPUSH_VAPID_PUBLIC_KEY", default="")
+WEBPUSH_VAPID_ADMIN_EMAIL = config("WEBPUSH_VAPID_ADMIN_EMAIL", default="admin@freshon.in")
+
+# ─── Firebase Cloud Messaging (FCM) ─────────────────────────────────────
+
+FIREBASE_CREDENTIALS_PATH = config("FIREBASE_CREDENTIALS_PATH", default="")
+FIREBASE_CREDENTIALS_JSON = config("FIREBASE_CREDENTIALS_JSON", default="")  # For Docker/containers

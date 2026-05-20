@@ -15,9 +15,9 @@ class FarmerProfileSerializer(serializers.ModelSerializer):
             'id', 'name', 'farm_name', 'location', 'years_of_experience', 'rating',
             'speciality', 'bio', 'image', 'latitude', 'longitude', 'total_acreage',
             'crops', 'organic_pledge_accepted', 'organic_pledge_signature',
-            'organic_pledge_accepted_at',
+            'organic_pledge_accepted_at', 'fcm_token', 'fcm_token_updated_at',
         ]
-        read_only_fields = ['id', 'rating']
+        read_only_fields = ['id', 'rating', 'fcm_token_updated_at']
 
     def get_name(self, obj):
         return obj.user.get_full_name() or obj.user.username

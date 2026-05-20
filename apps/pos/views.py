@@ -498,11 +498,42 @@ class PosOrderCreateView(APIView):
 
             # Create tenders
             for tender in tenders:
+                tender_method = tender['method']
+                tender_amount = Decimal(str(tender['amount']))
+                
                 PosTender.objects.create(
                     transaction=txn,
-                    method=tender['method'],
-                    amount=Decimal(str(tender['amount'])),
+                    method=tender_method,
+                    amount=tender_amount,
                 )
+                
+                # If tender is Wallet and customer is registered with a user, deduct from their actual wallet balance
+                if tender_method.lower() == 'wallet' and customer and customer.user and tender_amount > 0:
+                    try:
+                        wallet_obj = Wallet.objects.select_for_update().get(user=customer.user)
+                        if wallet_obj.balance < tender_amount:
+                            raise serializers.ValidationError(
+                                f"Insufficient customer wallet balance. Required: ₹{tender_amount}, Available: ₹{wallet_obj.balance}"
+                            )
+                        
+                        balance_before = wallet_obj.balance
+                        wallet_obj.balance -= tender_amount
+                        wallet_obj.save(update_fields=['balance'])
+                        
+                        # Create wallet transaction record for ledger consistency
+                        from apps.wallet.models import WalletTransaction
+                        WalletTransaction.objects.create(
+                            wallet=wallet_obj,
+                            amount=-tender_amount,
+                            reason='ORDER_PAYMENT',
+                            balance_before=balance_before,
+                            balance_after=wallet_obj.balance,
+                            notes=f"POS walk-in purchase (Txn Ref: {txn.id})"
+                        )
+                    except Wallet.DoesNotExist:
+                        raise serializers.ValidationError(
+                            f"Customer phone {customer.phone} is registered, but has no wallet to deduct ₹{tender_amount} from."
+                        )
 
             # Update shift totals
             shift.txn_count += 1

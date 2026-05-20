@@ -161,10 +161,16 @@ class FarmerProfileView(APIView):
         return Response(serializer.data)
 
     def patch(self, request):
+        from django.utils import timezone
         try:
             profile = request.user.farmer_profile
         except FarmerProfile.DoesNotExist:
             profile = FarmerProfile.objects.create(user=request.user, location='', speciality='')
+        
+        # If fcm_token is being updated, also update the timestamp
+        if 'fcm_token' in request.data:
+            request.data['fcm_token_updated_at'] = timezone.now()
+        
         serializer = FarmerProfileSerializer(profile, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
         serializer.save()
@@ -240,6 +246,45 @@ class FarmerDashboardView(APIView):
             for p in profile.payouts.all()[:5]
         ]
 
+        # Generate sales chart data for last 7 days
+        sales_7d = []
+        for i in range(6, -1, -1):
+            day_start = now - timedelta(days=i+1)
+            day_end = now - timedelta(days=i)
+            day_label = day_end.strftime('%a')  # Mon, Tue, etc.
+            day_sales = sold_items.filter(
+                order__created_at__gte=day_start,
+                order__created_at__lt=day_end
+            ).aggregate(t=Sum('batch__purchase_price'))['t'] or 0
+            sales_7d.append({'d': day_label, 'v': float(day_sales)})
+
+        # Generate sales chart data for last 30 days (grouped by week for cleaner display)
+        sales_30d = []
+        for i in range(4):
+            week_start = now - timedelta(days=(i+1)*7)
+            week_end = now - timedelta(days=i*7)
+            week_label = f'W{4-i}'
+            week_sales = sold_items.filter(
+                order__created_at__gte=week_start,
+                order__created_at__lt=week_end
+            ).aggregate(t=Sum('batch__purchase_price'))['t'] or 0
+            sales_30d.insert(0, {'d': week_label, 'v': float(week_sales)})
+
+        # Calculate growth percentage (current week vs previous week)
+        prev_week_start = now - timedelta(days=14)
+        prev_week_end = now - timedelta(days=7)
+        prev_week_sales = sold_items.filter(
+            order__created_at__gte=prev_week_start,
+            order__created_at__lt=prev_week_end
+        ).aggregate(t=Sum('batch__purchase_price'))['t'] or 0
+        current_week_sales = weekly_items.aggregate(t=Sum('batch__purchase_price'))['t'] or 0
+        
+        growth_pct = 0
+        if prev_week_sales > 0:
+            growth_pct = round(((float(current_week_sales) - float(prev_week_sales)) / float(prev_week_sales)) * 100, 1)
+        elif current_week_sales > 0:
+            growth_pct = 100  # New sales when there were none before
+
         return Response({
             'total_earnings': float(total_revenue),
             'total_sales': float(total_revenue),
@@ -248,13 +293,16 @@ class FarmerDashboardView(APIView):
             'monthly_earnings': monthly_total,
             'total_products': batches.count(),
             'live_products': batches.filter(stock_level__gt=0).count(),
-            'avg_rating': float(profile.rating),
+            'avg_rating': float(profile.rating or 0),
             'total_orders': sold_items.values('order').distinct().count(),
             'weekly_sales': float(weekly_items.aggregate(t=Sum('batch__purchase_price'))['t'] or 0),
             'monthly_sales': float(monthly_items.aggregate(t=Sum('batch__purchase_price'))['t'] or 0),
             'pending_payouts': float(profile.payouts.filter(status='pending').aggregate(Sum('amount'))['amount__sum'] or 0),
             'unread_notifications_count': profile.notifications.filter(is_read=False).count(),
             'recent_transactions': recent_payouts,
+            'sales_7d': sales_7d,
+            'sales_30d': sales_30d,
+            'growth_percentage': growth_pct,
         })
 
 
@@ -464,7 +512,7 @@ class FarmerOrderDetailView(APIView):
             order.status = status_map[new_status]
             order.save(update_fields=['status', 'updated_at'])
 
-        # Create notification
+        # Create in-app notification and send push notification
         if new_status == 'packed':
             FarmerNotification.objects.create(
                 farmer=profile,
@@ -473,6 +521,12 @@ class FarmerOrderDetailView(APIView):
                 type='success',
                 notification_type='general',
             )
+            # Send push notification (async, don't block response)
+            try:
+                from .notifications import notify_pickup_scheduled
+                notify_pickup_scheduled(profile, order.tracking_id or str(order.id), "Awaiting confirmation")
+            except Exception:
+                pass  # Don't fail the request if push fails
         elif new_status == 'pickup_requested':
             FarmerNotification.objects.create(
                 farmer=profile,

@@ -1,3 +1,4 @@
+from decimal import Decimal
 from rest_framework import serializers
 from django.db import transaction
 from apps.inventory.models import InventoryBatch
@@ -15,8 +16,10 @@ class OrderCreateSerializer(serializers.ModelSerializer):
         model = Order
         fields = [
             'id', 'tracking_id', 'address_title', 'address_line', 'delivery_slot', 
-            'payment_method', 'items', 'subtotal', 'delivery_fee', 'total', 'is_paid'
+            'payment_method', 'items', 'subtotal', 'delivery_fee', 'total', 'is_paid',
+            'wallet_amount_used', 'remaining_amount'
         ]
+        read_only_fields = ['id', 'tracking_id', 'subtotal', 'delivery_fee', 'total']
 
     def create(self, validated_data):
         items_data = validated_data.pop('items')
@@ -24,7 +27,9 @@ class OrderCreateSerializer(serializers.ModelSerializer):
         validated_data.pop('subtotal', None)
         validated_data.pop('delivery_fee', None)
         validated_data.pop('total', None)
-        validated_data.pop('is_paid', None)
+        is_paid_passed = validated_data.pop('is_paid', False)
+        wallet_amount_used_passed = validated_data.pop('wallet_amount_used', Decimal('0.00'))
+        remaining_amount_passed = validated_data.pop('remaining_amount', Decimal('0.00'))
         validated_data.pop('member_discount', None)
         validated_data.pop('pride_limit_used', None)
         user = validated_data.pop('user', self.context['request'].user)
@@ -81,35 +86,34 @@ class OrderCreateSerializer(serializers.ModelSerializer):
 
             # 4. Handle Wallet Payment Deduction
             payment_method = validated_data.get('payment_method', 'UPI')
-            wallet_amount_used = Decimal('0.00')
-            is_paid = False
+            is_paid = is_paid_passed or (payment_method == 'WALLET')
 
+            wallet_to_deduct = Decimal('0.00')
             if payment_method == 'WALLET':
-                from apps.wallet.models import WalletTransaction
+                wallet_to_deduct = total
+            elif payment_method in ['WALLET_UPI', 'WALLET_CARD']:
+                wallet_to_deduct = wallet_amount_used_passed
+
+            deducted_balance_before = None
+            deducted_balance_after = None
+            wallet_obj = None
+
+            if wallet_to_deduct > 0:
                 try:
-                    wallet = Wallet.objects.get(user=user)
-                    if wallet.balance < total:
-                        raise serializers.ValidationError(f"Insufficient wallet balance. Required: ₹{total}, Available: ₹{wallet.balance}")
+                    wallet_obj = Wallet.objects.select_for_update().get(user=user)
+                    if wallet_obj.balance < wallet_to_deduct:
+                        raise serializers.ValidationError(f"Insufficient wallet balance. Required: ₹{wallet_to_deduct}, Available: ₹{wallet_obj.balance}")
                     
-                    # Record balance before deduction
-                    balance_before = wallet.balance
-                    wallet.balance -= total
-                    wallet.save(update_fields=['balance'])
-                    
-                    wallet_amount_used = total
-                    is_paid = True
-                    
-                    # Create the transaction record for the ledger
-                    WalletTransaction.objects.create(
-                        wallet=wallet,
-                        amount=-total,
-                        reason='ORDER_PAYMENT',
-                        balance_before=balance_before,
-                        balance_after=wallet.balance,
-                        notes=f"Initial payment for order creation"
-                    )
+                    # Deduct balance atomically
+                    deducted_balance_before = wallet_obj.balance
+                    wallet_obj.balance -= wallet_to_deduct
+                    wallet_obj.save(update_fields=['balance'])
+                    deducted_balance_after = wallet_obj.balance
+                    wallet_amount_used = wallet_to_deduct
                 except Wallet.DoesNotExist:
                     raise serializers.ValidationError("No wallet found for this user. Please top up first.")
+            else:
+                wallet_amount_used = Decimal('0.00')
 
             # 5. Create the Order with calculated values
             order = Order.objects.create(
@@ -120,18 +124,25 @@ class OrderCreateSerializer(serializers.ModelSerializer):
                 member_discount=member_discount,
                 pride_limit_used=pride_limit_used,
                 wallet_amount_used=wallet_amount_used,
+                remaining_amount=total - wallet_amount_used,
                 is_paid=is_paid,
                 status='CONFIRMED',
                 payment_status='COMPLETED' if is_paid else 'PENDING',
                 **validated_data
             )
 
-            # Link the wallet transaction to the order if it was created
-            if payment_method == 'WALLET':
-                txn = WalletTransaction.objects.filter(wallet__user=user, reason='ORDER_PAYMENT', related_order__isnull=True).order_by('-created_at').first()
-                if txn:
-                    txn.related_order = order
-                    txn.save(update_fields=['related_order'])
+            # Link/Create the wallet transaction record directly with the order
+            if wallet_to_deduct > 0 and wallet_obj:
+                from apps.wallet.models import WalletTransaction
+                WalletTransaction.objects.create(
+                    wallet=wallet_obj,
+                    amount=-wallet_to_deduct,
+                    reason='ORDER_PAYMENT',
+                    balance_before=deducted_balance_before,
+                    balance_after=deducted_balance_after,
+                    related_order=order,
+                    notes=f"Wallet split payment for order {order.tracking_id}"
+                )
 
             # 6. Create items and deduct stock
             for item in order_items_to_create:

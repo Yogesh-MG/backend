@@ -33,6 +33,8 @@ urlpatterns = [
     path("api/delivery-partner/", include("apps.delivery_partner.urls")),
     path("api/farmer/", include("apps.farmer.urls")),
     path("api/pos/", include("apps.pos.urls")),
+    # Notifications API
+    path("api/notifications/", include("apps.notifications.urls")),
 ]
 
 if settings.DEBUG:
