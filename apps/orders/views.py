@@ -36,9 +36,10 @@ class OrderViewSet(viewsets.ModelViewSet):
         )
         
         # Prefetch customer impact to avoid N+1 on organic_impact calculation
+        # NOTE: CustomerImpact is a OneToOneField with related_name='impact'
         from apps.wallet.models import CustomerImpact
         impact_prefetch = Prefetch(
-            'user__customerimpact_set',
+            'user__impact',
             queryset=CustomerImpact.objects.all()
         )
         

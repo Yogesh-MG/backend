@@ -8,14 +8,10 @@ def get_organic_impact_data(order, user):
     """Get organic impact data, using prefetched cache when available to avoid N+1 queries."""
     from apps.wallet.models import CustomerImpact
     
-    # Try to use prefetched cache first (set in OrderViewSet.get_queryset)
+    # Use the correct related_name 'impact' (OneToOneField)
     impact = None
     try:
-        impact_set = user.customerimpact_set.all()
-        if hasattr(impact_set, '_result_cache'):  # Prefetch was used
-            impact = impact_set.first() if impact_set.exists() else None
-        else:  # Fallback to direct query if prefetch wasn't used
-            impact = CustomerImpact.objects.get(user=user)
+        impact = user.impact
     except CustomerImpact.DoesNotExist:
         impact = None
     
