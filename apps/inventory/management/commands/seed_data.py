@@ -1,5 +1,7 @@
 import random
 import os
+import csv
+from datetime import datetime
 from django.core.management.base import BaseCommand
 from django.utils import timezone
 from apps.accounts.models import User, FarmerProfile
@@ -95,7 +97,14 @@ class Command(BaseCommand):
         SubCategory.objects.all().delete()
         Category.objects.all().delete()
 
-        # Try to load from Excel first
+        # Try to load from CSV first
+        csv_file = "ItemMaster.csv"
+        if os.path.exists(csv_file):
+            self.stdout.write(f"Loading from {csv_file}...")
+            self.seed_from_csv(csv_file)
+            return
+
+        # Try to load from Excel second
         excel_file = "FreshOn_Product_Categories_v3.xlsx"
         if EXCEL_AVAILABLE and os.path.exists(excel_file):
             self.stdout.write(f"Loading from {excel_file}...")
@@ -428,6 +437,180 @@ class Command(BaseCommand):
                     product_count += 1
 
         self.stdout.write(self.style.SUCCESS(f"Successfully seeded {product_count} products across {len(data_structure)} categories!"))
+
+    def seed_from_csv(self, csv_file):
+        """Load products from ItemMaster.csv"""
+        try:
+            with open(csv_file, 'r', encoding='utf-8') as f:
+                csv_reader = csv.DictReader(f)
+                if csv_reader.fieldnames is None:
+                    raise ValueError("CSV file is empty or cannot be read")
+                
+                # Expected columns: Item Name, Qty, unit, price, barcodeID, Pkd Date, Best Before, Batch No., label qty
+                rows = list(csv_reader)
+                if not rows:
+                    raise ValueError("No data rows in CSV file")
+        except Exception as e:
+            self.stdout.write(self.style.ERROR(f"Error loading CSV: {e}. Falling back to dummy data..."))
+            return False
+
+        farmer_profiles = self.create_users()
+
+        self.stdout.write("Seeding products from CSV...")
+        
+        # Create a default category for CSV imports
+        category, _ = Category.objects.get_or_create(
+            name="FreshOn Products",
+            defaults={
+                "slug": "freshon-products",
+                "emoji": "🥬",
+                "description": "Premium quality products from ItemMaster"
+            }
+        )
+
+        # Create default subcategories
+        subcategories = {
+            "Spices & Seasonings": SubCategory.objects.get_or_create(
+                category=category,
+                name="Spices & Seasonings",
+                defaults={"slug": "spices-seasonings", "emoji": "🌶️"}
+            )[0],
+            "Grains & Flours": SubCategory.objects.get_or_create(
+                category=category,
+                name="Grains & Flours",
+                defaults={"slug": "grains-flours", "emoji": "🌾"}
+            )[0],
+            "Dry Goods": SubCategory.objects.get_or_create(
+                category=category,
+                name="Dry Goods",
+                defaults={"slug": "dry-goods", "emoji": "🏺"}
+            )[0],
+            "Kitchenware": SubCategory.objects.get_or_create(
+                category=category,
+                name="Kitchenware",
+                defaults={"slug": "kitchenware", "emoji": "🍳"}
+            )[0],
+        }
+
+        product_data = {}  # Track products by name to group variants
+        product_count = 0
+        variant_count = 0
+
+        for row in rows:
+            try:
+                item_name = row.get('Item Name', '').strip()
+                qty = row.get('Qty', '').strip()
+                unit = row.get('unit', '').strip()
+                price_str = row.get('price', '0').strip()
+                barcode_id = row.get('barcodeID', '').strip()
+                pkd_date_str = row.get('Pkd Date', '')
+                best_before = row.get('Best Before', '').strip()
+                batch_no = row.get('Batch No.', '').strip()
+                label_qty = row.get('label qty', '').strip()
+
+                # Skip rows with missing critical data
+                if not item_name or not qty or not unit:
+                    continue
+
+                # Parse price
+                try:
+                    price = int(float(price_str)) if price_str else 100
+                except ValueError:
+                    price = 100
+
+                # Determine subcategory based on item name
+                subcategory = subcategories["Dry Goods"]
+                if any(keyword in item_name.lower() for keyword in ['powder', 'flour', 'atta', 'roti', 'bajra', 'millet']):
+                    subcategory = subcategories["Grains & Flours"]
+                elif any(keyword in item_name.lower() for keyword in ['pepper', 'cumin', 'ajwain', 'masala', 'spice']):
+                    subcategory = subcategories["Spices & Seasonings"]
+                elif any(keyword in item_name.lower() for keyword in ['pan', 'brush', 'toothbrush', 'ear buds']):
+                    subcategory = subcategories["Kitchenware"]
+
+                # Create or get product (group by item name)
+                if item_name not in product_data:
+                    # Determine organic scores based on item name
+                    if 'organic' in item_name.lower() or 'natural' in item_name.lower():
+                        water = random.uniform(5.0, 15.0)
+                        soil = random.uniform(2.0, 4.0)
+                        chem = random.uniform(1.0, 5.0)
+                        farm = random.uniform(3.0, 6.0)
+                    else:
+                        water = random.uniform(2.0, 10.0)
+                        soil = random.uniform(0.5, 2.0)
+                        chem = random.uniform(2.0, 8.0)
+                        farm = random.uniform(1.0, 3.0)
+
+                    prod = Product.objects.create(
+                        category=category,
+                        subcategory=subcategory,
+                        name=item_name,
+                        description=f"Premium quality {item_name} sourced from FreshOn.in - Best Before: {best_before if best_before else 'To be determined'}",
+                        storage_instructions="Store in cool, dry conditions. Check best before date.",
+                        water_score=round(water, 2),
+                        soil_score=round(soil, 2),
+                        chemical_score=round(chem, 2),
+                        farmer_score=round(farm, 2)
+                    )
+                    
+                    # Use a generic image for all CSV products
+                    prod.base_image = "https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&q=80&w=600&h=600"
+                    prod.save()
+                    
+                    # Add benefits
+                    ProductBenefit.objects.create(product=prod, benefit="Farm Fresh")
+                    ProductBenefit.objects.create(product=prod, benefit="Quality Assured")
+                    
+                    product_data[item_name] = prod
+                    product_count += 1
+                else:
+                    prod = product_data[item_name]
+
+                # Create variant for this quantity/unit combination
+                variant_unit = f"{qty} {unit}"
+                mrp = int(price * 1.25) if price > 0 else 125
+                
+                variant, created = ProductVariant.objects.get_or_create(
+                    product=prod,
+                    unit=variant_unit,
+                    defaults={
+                        "price": price,
+                        "mrp": mrp,
+                        "is_active": True
+                    }
+                )
+                
+                if created:
+                    # Parse packaging date
+                    try:
+                        if pkd_date_str:
+                            pkd_date = datetime.strptime(pkd_date_str.strip(), "%m/%d/%Y").date()
+                        else:
+                            pkd_date = timezone.now().date()
+                    except ValueError:
+                        pkd_date = timezone.now().date()
+
+                    # Create inventory batch
+                    InventoryBatch.objects.create(
+                        farmer=random.choice(farmer_profiles),
+                        variant=variant,
+                        purchase_price=int(price * 0.7),
+                        stock_level=random.randint(20, 500),
+                        batch_number=batch_no if batch_no else f"BATCH-{barcode_id}",
+                        harvest_date=pkd_date,
+                        is_organic='organic' in item_name.lower(),
+                        is_farm_fresh=True
+                    )
+                    variant_count += 1
+
+            except Exception as e:
+                self.stdout.write(self.style.WARNING(f"Skipping row due to error: {e}"))
+                continue
+
+        self.stdout.write(self.style.SUCCESS(
+            f"Successfully seeded {product_count} unique products from CSV with {variant_count} variants and {InventoryBatch.objects.count()} inventory batches!"
+        ))
+        return True
 
     def seed_from_excel(self, excel_file):
         """Load products from FreshOn_Product_Categories_v3.xlsx"""
