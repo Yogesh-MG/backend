@@ -61,7 +61,7 @@ class PickerProfile(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     def __str__(self):
-        return f"Picker: {self.user.get_full_name() or self.user.username} @ {self.hub_name}"
+        return f"Picker: {self.user.get_full_name() or self.user.username} @ {self.hub_name} @ {self.user.id}"
 
     class Meta:
         ordering = ['-created_at']
