@@ -46,4 +46,4 @@ class InventoryBatchAdmin(admin.ModelAdmin):
 
 @admin.register(ProductBenefit)
 class ProductBenefitAdmin(admin.ModelAdmin):
-    list_display = ('product', 'benefit')
+    list_display = ('product', 'benefit')

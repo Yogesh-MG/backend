@@ -596,7 +596,6 @@ class Command(BaseCommand):
                         variant=variant,
                         purchase_price=int(price * 0.7),
                         stock_level=random.randint(20, 500),
-                        batch_number=batch_no if batch_no else f"BATCH-{barcode_id}",
                         harvest_date=pkd_date,
                         is_organic='organic' in item_name.lower(),
                         is_farm_fresh=True
