@@ -17,7 +17,7 @@ except ImportError:
     EXCEL_AVAILABLE = False
 
 class Command(BaseCommand):
-    help = 'Seeds the database with real products from FreshOn_Product_Categories_v3.xlsx or fallback dummy data'
+    help = 'Seeds the database with real products from Products.csv or fallback dummy data'
 
     def create_users(self):
         self.stdout.write("Creating Farmers...")
@@ -97,27 +97,254 @@ class Command(BaseCommand):
         SubCategory.objects.all().delete()
         Category.objects.all().delete()
 
-        # Try to load from CSV first
-        csv_file = "ItemMaster.csv"
+        # Try to load from Products.csv first (the main product data file)
+        csv_file = "Products.csv"
         if os.path.exists(csv_file):
             self.stdout.write(f"Loading from {csv_file}...")
-            self.seed_from_csv(csv_file)
+            self.seed_from_products_csv(csv_file)
             return
 
-        # Try to load from Excel second
-        excel_file = "FreshOn_Product_Categories_v3.xlsx"
-        if EXCEL_AVAILABLE and os.path.exists(excel_file):
-            self.stdout.write(f"Loading from {excel_file}...")
-            self.seed_from_excel(excel_file)
-            return
-        else:
-            if not EXCEL_AVAILABLE:
-                self.stdout.write(self.style.WARNING("openpyxl not installed. Install with: pip install openpyxl"))
-            if not os.path.exists(excel_file):
-                self.stdout.write(self.style.WARNING(f"{excel_file} not found. Using fallback dummy data..."))
-            self.stdout.write("Seeding fallback 20+ Categories and Sub-categories...")
+        # Fallback to dummy data seeding
+        self.stdout.write(self.style.WARNING(f"{csv_file} not found. Using fallback dummy data..."))
+        self.seed_fallback_data()
+
+    def seed_from_products_csv(self, csv_file):
+        """Load products from Products.csv with fields matching our models"""
+        try:
+            with open(csv_file, 'r', encoding='utf-8') as f:
+                csv_reader = csv.DictReader(f)
+                if csv_reader.fieldnames is None:
+                    raise ValueError("CSV file is empty or cannot be read")
+                
+                rows = list(csv_reader)
+                if not rows:
+                    raise ValueError("No data rows in CSV file")
+        except Exception as e:
+            self.stdout.write(self.style.ERROR(f"Error loading CSV: {e}. Falling back to dummy data..."))
+            return self.seed_fallback_data()
+
+        farmer_profiles = self.create_users()
+
+        self.stdout.write("Seeding products from Products.csv...")
         
-        # Fallback dummy data seeding
+        # Image pools for categories
+        img_pools = {
+            "Millets Poha": "https://images.unsplash.com/photo-1586201375761-83865001e31c",
+            "Whole Grain Millets": "https://images.unsplash.com/photo-1586201375761-83865001e31c",
+            "Millets Rice": "https://images.unsplash.com/photo-1586201375761-83865001e31c",
+            "Raisins": "https://images.unsplash.com/photo-1599599810694-b5ac4dd0b676",
+            "Dry Fruits": "https://images.unsplash.com/photo-1599599810694-b5ac4dd0b676",
+            "Roasted": "https://images.unsplash.com/photo-1599599810694-b5ac4dd0b676",
+            "Cashew": "https://images.unsplash.com/photo-1599599810694-b5ac4dd0b676",
+            "Seeds": "https://images.unsplash.com/photo-1536591030366-f76f74296482",
+            "Almonds": "https://images.unsplash.com/photo-1599599810694-b5ac4dd0b676",
+            "Concentrate": "https://images.unsplash.com/photo-1474979266404-7eaacbcd87c5",
+            "Tea & Coffee": "https://images.unsplash.com/photo-1544787210-2211d7c00676",
+            "Cold Pressed Oil": "https://images.unsplash.com/photo-1474979266404-7eaacbcd87c5",
+            "Dry Fruits & Seeds": "https://images.unsplash.com/photo-1599599810694-b5ac4dd0b676",
+            "Glass Products": "https://images.unsplash.com/photo-1542838132-92c53300491e",
+            "Immunity Booster": "https://images.unsplash.com/photo-1505576399279-565b52d4ac71",
+            "Nature Friendly": "https://images.unsplash.com/photo-1542838132-92c53300491e",
+            "Pulses": "https://images.unsplash.com/photo-1585994192701-97061730872c",
+            "Rava Sooji": "https://images.unsplash.com/photo-1509440159596-0249088772ff",
+            "Ready To Cook": "https://images.unsplash.com/photo-1546069901-ba9599a7e63c",
+            "Rice": "https://images.unsplash.com/photo-1586201375761-83865001e31c",
+            "Rice Products": "https://images.unsplash.com/photo-1586201375761-83865001e31c",
+            "Salt": "https://images.unsplash.com/photo-1518110925495-5fe2fda0442c",
+            "Snacks": "https://images.unsplash.com/photo-1599490659213-e2b9527bb087",
+            "Spice Powder": "https://images.unsplash.com/photo-1596040033229-a9821ebd058d",
+            "Blended Masalas": "https://images.unsplash.com/photo-1596040033229-a9821ebd058d",
+            "Sweet": "https://images.unsplash.com/photo-1587049352846-4a222e784d38",
+            "Table Ware": "https://images.unsplash.com/photo-1542838132-92c53300491e",
+            "Whole grains": "https://images.unsplash.com/photo-1586201375761-83865001e31c",
+            "Whole Spices": "https://images.unsplash.com/photo-1596040033229-a9821ebd058d",
+            "Chutney Powder": "https://images.unsplash.com/photo-1596040033229-a9821ebd058d",
+            "Jaggery": "https://images.unsplash.com/photo-1587049352846-4a222e784d38",
+            "Default": "https://images.unsplash.com/photo-1542838132-92c53300491e"
+        }
+
+        # Track created categories/subcategories to avoid duplicates
+        created_categories = {}
+        created_subcategories = {}
+        product_data = {}  # Track products by name to group variants
+        product_count = 0
+        variant_count = 0
+
+        for row in rows:
+            try:
+                # Extract fields from CSV
+                product_name = row.get('name', '').strip()
+                category_name = row.get('category', '').strip()
+                size = row.get('size', '').strip()
+                unit = row.get('unit', '').strip()
+                price_str = row.get('price', '0').strip()
+                market_price_str = row.get('marketPrice', '0').strip()
+                purchase_price_str = row.get('purchasePrice', '').strip()
+                in_stock = row.get('inStock', 'No').strip().lower() == 'yes'
+                is_active = row.get('isActive', 'No').strip().lower() == 'yes'
+                description = row.get('description', '').strip()
+                photos = row.get('photos', '').strip()
+                sku = row.get('sku', '').strip()
+                hsn_sac_code = row.get('hsnSacCode', '').strip()
+                gst_str = row.get('gst', '0').strip()
+                is_coming_soon = row.get('isComingSoon', 'No').strip().lower() == 'yes'
+                vegan = row.get('vegan', '').strip()
+                brand = row.get('brand', '').strip() or row.get('productBrand', '').strip()
+
+                # Skip rows with missing critical data
+                if not product_name or not category_name:
+                    continue
+
+                # Parse price
+                try:
+                    price = int(float(price_str)) if price_str else random.randint(50, 500)
+                except ValueError:
+                    price = random.randint(50, 500)
+
+                # Parse market price (for MRP)
+                try:
+                    mrp = int(float(market_price_str)) if market_price_str else int(price * 1.2)
+                except ValueError:
+                    mrp = int(price * 1.2)
+
+                # Parse purchase price
+                try:
+                    purchase_price = int(float(purchase_price_str)) if purchase_price_str else int(price * 0.75)
+                except ValueError:
+                    purchase_price = int(price * 0.75)
+
+                # Create or get main category
+                if category_name not in created_categories:
+                    cat_slug = category_name.lower().replace(" ", "-").replace("&", "and")
+                    cat = Category.objects.create(
+                        name=category_name,
+                        slug=cat_slug,
+                        emoji="🥬",  # Default emoji
+                        description=f"Fresh {category_name} sourced directly from farms."
+                    )
+                    created_categories[category_name] = cat
+                cat_obj = created_categories[category_name]
+
+                # Create or get subcategory (use category as subcategory for simplicity)
+                sub_key = f"{category_name}_{category_name}"
+                if sub_key not in created_subcategories:
+                    sub_slug = f"{category_name.lower().replace(' ', '-').replace('&', 'and')}-sub"
+                    sub = SubCategory.objects.create(
+                        category=cat_obj,
+                        name=category_name,
+                        slug=sub_slug,
+                        emoji="✓"
+                    )
+                    created_subcategories[sub_key] = sub
+                sub_obj = created_subcategories[sub_key]
+
+                # Create or get product (group by product name)
+                prod_key = f"{category_name}_{product_name}"
+                if prod_key not in product_data:
+                    # Dynamic organic impact scores based on category
+                    if 'Millet' in category_name or 'Grain' in category_name or 'Rice' in category_name:
+                        water = random.uniform(5.0, 15.0)
+                        soil = random.uniform(3.0, 6.0)
+                        chem = random.uniform(10.0, 25.0)
+                        farm = random.uniform(3.0, 7.0)
+                    elif 'Dry Fruit' in category_name or 'Nut' in category_name or 'Cashew' in category_name or 'Almond' in category_name:
+                        water = random.uniform(15.0, 30.0)
+                        soil = random.uniform(1.5, 3.0)
+                        chem = random.uniform(8.0, 20.0)
+                        farm = random.uniform(4.0, 8.0)
+                    elif 'Oil' in category_name:
+                        water = random.uniform(25.0, 50.0)
+                        soil = random.uniform(1.0, 2.5)
+                        chem = random.uniform(0.0, 2.0)
+                        farm = random.uniform(5.0, 10.0)
+                    elif 'Spice' in category_name or 'Masala' in category_name:
+                        water = random.uniform(2.0, 10.0)
+                        soil = random.uniform(0.5, 2.0)
+                        chem = random.uniform(1.0, 5.0)
+                        farm = random.uniform(1.0, 3.0)
+                    else:
+                        water = random.uniform(2.0, 10.0)
+                        soil = random.uniform(0.5, 2.0)
+                        chem = random.uniform(1.0, 5.0)
+                        farm = random.uniform(1.0, 3.0)
+
+                    # Use description from CSV if available, otherwise generate one
+                    prod_description = description if description else f"Premium quality {product_name} from FreshOn.in"
+                    
+                    prod = Product.objects.create(
+                        category=cat_obj,
+                        subcategory=sub_obj,
+                        name=product_name,
+                        description=prod_description,
+                        storage_instructions="Store in cool, dry conditions.",
+                        water_score=round(water, 2),
+                        soil_score=round(soil, 2),
+                        chemical_score=round(chem, 2),
+                        farmer_score=round(farm, 2)
+                    )
+                    
+                    # Add image link
+                    base_img = img_pools.get(category_name, img_pools["Default"])
+                    prod.base_image = f"{base_img}?auto=format&fit=crop&q=80&w=600&h=600&sig={product_count}"
+                    prod.save()
+                    
+                    # Add benefits based on product attributes
+                    benefits = ["Farm to Table"]
+                    if vegan.lower() == 'veg':
+                        benefits.append("100% Vegetarian")
+                    if 'organic' in product_name.lower() or 'natural' in product_name.lower():
+                        benefits.append("Organic")
+                    if 'cold pressed' in product_name.lower():
+                        benefits.append("Cold Pressed")
+                    
+                    for benefit in benefits:
+                        ProductBenefit.objects.create(product=prod, benefit=benefit)
+                    
+                    product_data[prod_key] = prod
+                    product_count += 1
+                else:
+                    prod = product_data[prod_key]
+
+                # Create variant for this size/unit combination
+                variant_unit = f"{size} {unit}".strip() if size and unit else (size or unit or "1 unit")
+                
+                variant, created = ProductVariant.objects.get_or_create(
+                    product=prod,
+                    unit=variant_unit,
+                    defaults={
+                        "price": price,
+                        "mrp": mrp,
+                        "is_active": is_active and not is_coming_soon
+                    }
+                )
+                
+                if created:
+                    # Create inventory batch for this variant
+                    stock_level = random.randint(10, 500) if in_stock else 0
+                    InventoryBatch.objects.create(
+                        farmer=random.choice(farmer_profiles),
+                        variant=variant,
+                        purchase_price=purchase_price,
+                        stock_level=stock_level,
+                        harvest_date=timezone.now() - timezone.timedelta(days=random.randint(0, 7)),
+                        is_organic='organic' in product_name.lower() or 'natural' in product_name.lower(),
+                        is_farm_fresh=True
+                    )
+                    variant_count += 1
+
+            except Exception as e:
+                self.stdout.write(self.style.WARNING(f"Skipping row due to error: {e}"))
+                continue
+
+        self.stdout.write(self.style.SUCCESS(
+            f"Successfully seeded {product_count} unique products from Products.csv with {variant_count} variants and {InventoryBatch.objects.count()} inventory batches!"
+        ))
+        return True
+
+    def seed_fallback_data(self):
+        """Seed fallback dummy data when CSV is not available"""
+        self.stdout.write("Seeding fallback 20+ Categories and Sub-categories...")
+        
         data_structure = {
             "Vegetables": {
                 "emoji": "🥕",
@@ -437,329 +664,3 @@ class Command(BaseCommand):
                     product_count += 1
 
         self.stdout.write(self.style.SUCCESS(f"Successfully seeded {product_count} products across {len(data_structure)} categories!"))
-
-    def seed_from_csv(self, csv_file):
-        """Load products from ItemMaster.csv"""
-        try:
-            with open(csv_file, 'r', encoding='utf-8') as f:
-                csv_reader = csv.DictReader(f)
-                if csv_reader.fieldnames is None:
-                    raise ValueError("CSV file is empty or cannot be read")
-                
-                # Expected columns: Item Name, Qty, unit, price, barcodeID, Pkd Date, Best Before, Batch No., label qty
-                rows = list(csv_reader)
-                if not rows:
-                    raise ValueError("No data rows in CSV file")
-        except Exception as e:
-            self.stdout.write(self.style.ERROR(f"Error loading CSV: {e}. Falling back to dummy data..."))
-            return False
-
-        farmer_profiles = self.create_users()
-
-        self.stdout.write("Seeding products from CSV...")
-        
-        # Create a default category for CSV imports
-        category, _ = Category.objects.get_or_create(
-            name="FreshOn Products",
-            defaults={
-                "slug": "freshon-products",
-                "emoji": "🥬",
-                "description": "Premium quality products from ItemMaster"
-            }
-        )
-
-        # Create default subcategories
-        subcategories = {
-            "Spices & Seasonings": SubCategory.objects.get_or_create(
-                category=category,
-                name="Spices & Seasonings",
-                defaults={"slug": "spices-seasonings", "emoji": "🌶️"}
-            )[0],
-            "Grains & Flours": SubCategory.objects.get_or_create(
-                category=category,
-                name="Grains & Flours",
-                defaults={"slug": "grains-flours", "emoji": "🌾"}
-            )[0],
-            "Dry Goods": SubCategory.objects.get_or_create(
-                category=category,
-                name="Dry Goods",
-                defaults={"slug": "dry-goods", "emoji": "🏺"}
-            )[0],
-            "Kitchenware": SubCategory.objects.get_or_create(
-                category=category,
-                name="Kitchenware",
-                defaults={"slug": "kitchenware", "emoji": "🍳"}
-            )[0],
-        }
-
-        product_data = {}  # Track products by name to group variants
-        product_count = 0
-        variant_count = 0
-
-        for row in rows:
-            try:
-                item_name = row.get('Item Name', '').strip()
-                qty = row.get('Qty', '').strip()
-                unit = row.get('unit', '').strip()
-                price_str = row.get('price', '0').strip()
-                barcode_id = row.get('barcodeID', '').strip()
-                pkd_date_str = row.get('Pkd Date', '')
-                best_before = row.get('Best Before', '').strip()
-                batch_no = row.get('Batch No.', '').strip()
-                label_qty = row.get('label qty', '').strip()
-
-                # Skip rows with missing critical data
-                if not item_name or not qty or not unit:
-                    continue
-
-                # Parse price
-                try:
-                    price = int(float(price_str)) if price_str else 100
-                except ValueError:
-                    price = 100
-
-                # Determine subcategory based on item name
-                subcategory = subcategories["Dry Goods"]
-                if any(keyword in item_name.lower() for keyword in ['powder', 'flour', 'atta', 'roti', 'bajra', 'millet']):
-                    subcategory = subcategories["Grains & Flours"]
-                elif any(keyword in item_name.lower() for keyword in ['pepper', 'cumin', 'ajwain', 'masala', 'spice']):
-                    subcategory = subcategories["Spices & Seasonings"]
-                elif any(keyword in item_name.lower() for keyword in ['pan', 'brush', 'toothbrush', 'ear buds']):
-                    subcategory = subcategories["Kitchenware"]
-
-                # Create or get product (group by item name)
-                if item_name not in product_data:
-                    # Determine organic scores based on item name
-                    if 'organic' in item_name.lower() or 'natural' in item_name.lower():
-                        water = random.uniform(5.0, 15.0)
-                        soil = random.uniform(2.0, 4.0)
-                        chem = random.uniform(1.0, 5.0)
-                        farm = random.uniform(3.0, 6.0)
-                    else:
-                        water = random.uniform(2.0, 10.0)
-                        soil = random.uniform(0.5, 2.0)
-                        chem = random.uniform(2.0, 8.0)
-                        farm = random.uniform(1.0, 3.0)
-
-                    prod = Product.objects.create(
-                        category=category,
-                        subcategory=subcategory,
-                        name=item_name,
-                        description=f"Premium quality {item_name} sourced from FreshOn.in - Best Before: {best_before if best_before else 'To be determined'}",
-                        storage_instructions="Store in cool, dry conditions. Check best before date.",
-                        water_score=round(water, 2),
-                        soil_score=round(soil, 2),
-                        chemical_score=round(chem, 2),
-                        farmer_score=round(farm, 2)
-                    )
-                    
-                    # Use a generic image for all CSV products
-                    prod.base_image = "https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&q=80&w=600&h=600"
-                    prod.save()
-                    
-                    # Add benefits
-                    ProductBenefit.objects.create(product=prod, benefit="Farm Fresh")
-                    ProductBenefit.objects.create(product=prod, benefit="Quality Assured")
-                    
-                    product_data[item_name] = prod
-                    product_count += 1
-                else:
-                    prod = product_data[item_name]
-
-                # Create variant for this quantity/unit combination
-                variant_unit = f"{qty} {unit}"
-                mrp = int(price * 1.25) if price > 0 else 125
-                
-                variant, created = ProductVariant.objects.get_or_create(
-                    product=prod,
-                    unit=variant_unit,
-                    defaults={
-                        "price": price,
-                        "mrp": mrp,
-                        "is_active": True
-                    }
-                )
-                
-                if created:
-                    # Parse packaging date
-                    try:
-                        if pkd_date_str:
-                            pkd_date = datetime.strptime(pkd_date_str.strip(), "%m/%d/%Y").date()
-                        else:
-                            pkd_date = timezone.now().date()
-                    except ValueError:
-                        pkd_date = timezone.now().date()
-
-                    # Create inventory batch
-                    InventoryBatch.objects.create(
-                        farmer=random.choice(farmer_profiles),
-                        variant=variant,
-                        purchase_price=int(price * 0.7),
-                        stock_level=random.randint(20, 500),
-                        harvest_date=pkd_date,
-                        is_organic='organic' in item_name.lower(),
-                        is_farm_fresh=True
-                    )
-                    variant_count += 1
-
-            except Exception as e:
-                self.stdout.write(self.style.WARNING(f"Skipping row due to error: {e}"))
-                continue
-
-        self.stdout.write(self.style.SUCCESS(
-            f"Successfully seeded {product_count} unique products from CSV with {variant_count} variants and {InventoryBatch.objects.count()} inventory batches!"
-        ))
-        return True
-
-    def seed_from_excel(self, excel_file):
-        """Load products from FreshOn_Product_Categories_v3.xlsx"""
-        try:
-            wb = openpyxl.load_workbook(excel_file)
-            ws = wb['All Products']
-        except Exception as e:
-            self.stdout.write(self.style.ERROR(f"Error loading Excel: {e}. Falling back to dummy data..."))
-            return False
-
-        farmer_profiles = self.create_users()
-
-        self.stdout.write("Seeding products from Excel...")
-        
-        # Image pools for variety
-        img_pools = {
-            "Vegetables": "https://images.unsplash.com/photo-1597362925123-77861d3fbac7",
-            "Fruits": "https://images.unsplash.com/photo-1610832958506-aa56368176cf",
-            "Dairy & Eggs": "https://images.unsplash.com/photo-1628088062854-d1870b4553ad",
-            "Dry Fruits & Nuts": "https://images.unsplash.com/photo-1599599810694-b5ac4dd0b676",
-            "Spices": "https://images.unsplash.com/photo-1596040033229-a9821ebd058d",
-            "Oils": "https://images.unsplash.com/photo-1474979266404-7eaacbcd87c5",
-            "Grains": "https://images.unsplash.com/photo-1586201375761-83865001e31c",
-            "Default": "https://images.unsplash.com/photo-1542838132-92c53300491e"
-        }
-
-        # Track created categories/subcategories to avoid duplicates
-        created_categories = {}
-        created_subcategories = {}
-        product_data = {}  # To group variants of same product
-        product_count = 0
-
-        # Read Excel data (skip header rows 1-2, start from row 3)
-        for row_idx, row in enumerate(ws.iter_rows(min_row=3, values_only=True), start=3):
-            if row_idx > ws.max_row:
-                break
-            
-            main_cat, sub_cat, prod_name, gramage = row[0], row[1], row[2], row[3]
-            
-            # Skip empty rows
-            if not all([main_cat, sub_cat, prod_name, gramage]):
-                continue
-
-            # Create or get main category
-            if main_cat not in created_categories:
-                cat_slug = main_cat.lower().replace(" ", "-").replace("&", "and")
-                cat = Category.objects.create(
-                    name=main_cat,
-                    slug=cat_slug,
-                    emoji="🥕",  # Default emoji
-                    description=f"Fresh {main_cat} sourced directly from farms."
-                )
-                created_categories[main_cat] = cat
-            cat_obj = created_categories[main_cat]
-
-            # Create or get subcategory
-            sub_key = f"{main_cat}_{sub_cat}"
-            if sub_key not in created_subcategories:
-                sub_slug = sub_cat.lower().replace(" ", "-").replace("&", "and")
-                sub = SubCategory.objects.create(
-                    category=cat_obj,
-                    name=sub_cat,
-                    slug=sub_slug,
-                    emoji="✓"  # Default emoji
-                )
-                created_subcategories[sub_key] = sub
-            sub_obj = created_subcategories[sub_key]
-
-            # Create or get product (group by product name)
-            prod_key = f"{main_cat}_{sub_cat}_{prod_name}"
-            if prod_key not in product_data:
-                # Dynamic organic impact scores based on category
-                if main_cat == "Vegetables":
-                    water = random.uniform(10.0, 20.0)
-                    soil = random.uniform(2.0, 4.0)
-                    chem = random.uniform(5.0, 15.0)
-                    farm = random.uniform(3.0, 6.0)
-                elif main_cat == "Fruits":
-                    water = random.uniform(15.0, 30.0)
-                    soil = random.uniform(1.5, 3.0)
-                    chem = random.uniform(8.0, 20.0)
-                    farm = random.uniform(4.0, 8.0)
-                elif "Dairy" in main_cat:
-                    water = random.uniform(25.0, 50.0)
-                    soil = random.uniform(1.0, 2.5)
-                    chem = random.uniform(0.0, 2.0)
-                    farm = random.uniform(5.0, 10.0)
-                elif "Grain" in main_cat or "Pulse" in main_cat:
-                    water = random.uniform(5.0, 15.0)
-                    soil = random.uniform(3.0, 6.0)
-                    chem = random.uniform(10.0, 25.0)
-                    farm = random.uniform(3.0, 7.0)
-                else:
-                    water = random.uniform(2.0, 10.0)
-                    soil = random.uniform(0.5, 2.0)
-                    chem = random.uniform(1.0, 5.0)
-                    farm = random.uniform(1.0, 3.0)
-
-                prod = Product.objects.create(
-                    category=cat_obj,
-                    subcategory=sub_obj,
-                    name=prod_name,
-                    description=f"Premium quality {prod_name} from FreshOn.in",
-                    storage_instructions="Store in cool, dry conditions.",
-                    water_score=round(water, 2),
-                    soil_score=round(soil, 2),
-                    chemical_score=round(chem, 2),
-                    farmer_score=round(farm, 2)
-                )
-                
-                # Add image link
-                base_img = img_pools.get(main_cat, img_pools["Default"])
-                prod.base_image = f"{base_img}?auto=format&fit=crop&q=80&w=600&h=600&sig={product_count}"
-                prod.save()
-                
-                # Add benefits
-                ProductBenefit.objects.create(product=prod, benefit="Farm to Table")
-                ProductBenefit.objects.create(product=prod, benefit="No Preservatives")
-                
-                product_data[prod_key] = prod
-                product_count += 1
-            else:
-                prod = product_data[prod_key]
-
-            # Create variant for this gramage/size
-            base_price = random.randint(50, 500)
-            mrp = int(base_price * 1.3)
-            variant, created = ProductVariant.objects.get_or_create(
-                product=prod,
-                unit=gramage,
-                defaults={
-                    "price": base_price,
-                    "mrp": mrp,
-                    "is_active": True
-                }
-            )
-            
-            if created:
-                # Create inventory batch for this variant
-                InventoryBatch.objects.create(
-                    farmer=random.choice(farmer_profiles),
-                    variant=variant,
-                    purchase_price=int(base_price * 0.75),
-                    stock_level=random.randint(10, 200),
-                    harvest_date=timezone.now() - timezone.timedelta(days=random.randint(0, 3)),
-                    is_organic=random.choice([True, False]),
-                    is_farm_fresh=True
-                )
-
-        self.stdout.write(self.style.SUCCESS(
-            f"Successfully seeded {product_count} unique products from Excel with {InventoryBatch.objects.count()} inventory batches!"
-        ))
-        return True

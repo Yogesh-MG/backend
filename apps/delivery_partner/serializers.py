@@ -1,6 +1,6 @@
 """Delivery Partner app serializers."""
 from rest_framework import serializers
-from .models import DeliveryPartnerProfile, DeliveryAssignment, DeliveryStop, ProofOfDelivery
+from .models import DeliveryPartnerProfile, DeliveryAssignment, DeliveryStop, ProofOfDelivery, DeliveryPartnerDocument
 
 
 class DeliveryStopItemSerializer(serializers.Serializer):
@@ -87,3 +87,27 @@ class ProofOfDeliverySerializer(serializers.ModelSerializer):
         model = ProofOfDelivery
         fields = ['id', 'type', 'otp_code', 'otp_verified', 'photo', 'created_at']
         read_only_fields = ['otp_verified']
+
+
+class DeliveryPartnerDocumentSerializer(serializers.ModelSerializer):
+    """Serializer for KYC documents."""
+    doc_type_display = serializers.CharField(source='get_doc_type_display', read_only=True)
+    status_display = serializers.CharField(source='get_status_display', read_only=True)
+    file_url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = DeliveryPartnerDocument
+        fields = [
+            'id', 'doc_type', 'doc_type_display', 'doc_number', 
+            'file', 'file_url', 'status', 'status_display',
+            'uploaded_at', 'verified_at', 'rejection_reason',
+        ]
+        read_only_fields = ['uploaded_at', 'verified_at', 'rejection_reason']
+
+    def get_file_url(self, obj):
+        if obj.file:
+            request = self.context.get('request')
+            if request:
+                return request.build_absolute_uri(obj.file.url)
+            return obj.file.url
+        return None

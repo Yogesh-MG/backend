@@ -9,6 +9,9 @@ from .views import (
     DeliveryDeliverView,
     DeliveryProofUploadView,
     DeliveryEarningsView,
+    DeliveryEarningsHistoryView,
+    DeliveryPartnerProfileView,
+    DeliveryPartnerDocumentsView,
 )
 
 urlpatterns = [
@@ -20,4 +23,7 @@ urlpatterns = [
     path('assignments/<uuid:assignment_id>/deliver/', DeliveryDeliverView.as_view(), name='dp_deliver'),
     path('proof/', DeliveryProofUploadView.as_view(), name='dp_proof_upload'),
     path('earnings/', DeliveryEarningsView.as_view(), name='dp_earnings'),
+    path('earnings/history/', DeliveryEarningsHistoryView.as_view(), name='dp_earnings_history'),
+    path('profile/', DeliveryPartnerProfileView.as_view(), name='dp_profile'),
+    path('documents/', DeliveryPartnerDocumentsView.as_view(), name='dp_documents'),
 ]

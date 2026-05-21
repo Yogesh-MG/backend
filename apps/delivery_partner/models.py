@@ -167,3 +167,42 @@ class ProofOfDelivery(models.Model):
     class Meta:
         ordering = ['-created_at']
         verbose_name_plural = "Proofs of Delivery"
+
+
+class DeliveryPartnerDocument(models.Model):
+    """KYC documents for delivery partner verification."""
+    DOC_TYPES = [
+        ('aadhaar', 'Aadhaar Card'),
+        ('pan', 'PAN Card'),
+        ('driving_licence', 'Driving Licence'),
+        ('vehicle_rc', 'Vehicle RC'),
+        ('insurance', 'Vehicle Insurance'),
+    ]
+
+    STATUS_CHOICES = [
+        ('pending', 'Pending'),
+        ('verified', 'Verified'),
+        ('rejected', 'Rejected'),
+    ]
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    partner = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='kyc_documents',
+        limit_choices_to={'role': 'DELIVERY'},
+    )
+    doc_type = models.CharField(max_length=20, choices=DOC_TYPES)
+    doc_number = models.CharField(max_length=50, blank=True)
+    file = models.ImageField(upload_to='kyc_documents/%Y/%m/', null=True, blank=True)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
+    uploaded_at = models.DateTimeField(auto_now_add=True)
+    verified_at = models.DateTimeField(null=True, blank=True)
+    rejection_reason = models.TextField(blank=True)
+
+    class Meta:
+        ordering = ['-uploaded_at']
+        unique_together = ['partner', 'doc_type']
+
+    def __str__(self):
+        return f"{self.get_doc_type_display()} - {self.partner.username} ({self.status})"
