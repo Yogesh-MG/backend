@@ -366,6 +366,11 @@ class FarmerBatchListView(APIView):
         variant.mrp = data.get('mrp')
         variant.save(update_fields=['price', 'mrp'])
 
+        # Determine if this needs approval:
+        # - Custom products (new products created by farmer) need approval
+        # - Existing catalog products are auto-approved
+        is_custom_product = bool(custom_name and (not product_id or product_id == 0))
+        
         batch = InventoryBatch.objects.create(
             farmer=profile,
             variant=variant,
@@ -373,6 +378,7 @@ class FarmerBatchListView(APIView):
             stock_level=data['stock_level'],
             harvest_date=data['harvest_date'],
             is_organic=data.get('is_organic', False),
+            is_approved=not is_custom_product,  # Auto-approve catalog products only
         )
         return Response(FarmerBatchSerializer(batch).data, status=status.HTTP_201_CREATED)
 

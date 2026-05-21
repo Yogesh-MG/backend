@@ -49,7 +49,9 @@ class FarmerBatchSerializer(serializers.ModelSerializer):
 
     def get_status(self, obj):
         if obj.stock_level == 0:
-            return "Out of Stock"
+            return "Out"
+        if not obj.is_approved:
+            return "Pending"
         return "Live"
 
 

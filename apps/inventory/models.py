@@ -71,6 +71,11 @@ class InventoryBatch(models.Model):
     is_organic = models.BooleanField(default=False)
     is_farm_fresh = models.BooleanField(default=True)
     
+    # Approval workflow - new batches start as pending
+    is_approved = models.BooleanField(default=False, help_text="Approved by admin for listing")
+    approved_at = models.DateTimeField(null=True, blank=True)
+    approved_by = models.ForeignKey('accounts.User', on_delete=models.SET_NULL, null=True, blank=True, related_name='approved_batches')
+    
     batch_image = models.ImageField(upload_to='batches/', null=True, blank=True, help_text="Optional batch-specific image")
     
     created_at = models.DateTimeField(auto_now_add=True)

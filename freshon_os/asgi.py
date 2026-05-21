@@ -19,13 +19,17 @@ os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'freshon_os.settings')
 django_asgi_app = get_asgi_application()
 
 # Import routing after Django setup
-from apps.notifications.routing import websocket_urlpatterns
+from apps.notifications.routing import websocket_urlpatterns as notifications_patterns
+from apps.agents.routing import websocket_urlpatterns as agents_patterns
+
+# Combine all WebSocket patterns
+all_websocket_patterns = notifications_patterns + agents_patterns
 
 application = ProtocolTypeRouter({
     "http": django_asgi_app,
     "websocket": AuthMiddlewareStack(
         URLRouter(
-            websocket_urlpatterns
+            all_websocket_patterns
         )
     ),
 })
