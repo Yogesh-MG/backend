@@ -440,7 +440,13 @@ class FarmerOrderListView(APIView):
 
         orders = (
             Order.objects.filter(items__batch__farmer=profile)
-            .prefetch_related('items')
+            .prefetch_related(
+                'items',
+                'items__batch',
+                'items__batch__variant',
+                'items__batch__variant__product',
+                'items__batch__farmer',
+            )
             .select_related('user')
             .distinct()
             .order_by('-created_at')[:50]
@@ -448,6 +454,7 @@ class FarmerOrderListView(APIView):
 
         data = []
         for order in orders:
+            # Use prefetched data - avoid additional queries
             farmer_items = [item for item in order.items.all() if item.batch and item.batch.farmer_id == profile.id]
             data.append({
                 'id': order.id,
@@ -516,6 +523,11 @@ class FarmerOrderDetailView(APIView):
             return Response({'error': 'Order not found'}, status=status.HTTP_404_NOT_FOUND)
 
         # Verify this order contains items from this farmer
+        # Prefetch items to avoid N+1
+        from django.db.models import Prefetch
+        order = Order.objects.prefetch_related(
+            Prefetch('items', queryset=OrderItem.objects.select_related('batch'))
+        ).get(id=order_id)
         farmer_items = [item for item in order.items.all() if item.batch and item.batch.farmer_id == profile.id]
         if not farmer_items:
             return Response({'error': 'Order not associated with this farmer'}, status=status.HTTP_403_FORBIDDEN)

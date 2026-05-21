@@ -247,7 +247,18 @@ class OrderDetailSerializer(serializers.ModelSerializer):
 
     def get_items(self, obj):
         from apps.inventory.serializers import InventoryBatchSerializer
-        items = obj.items.all()
+        # Use prefetched items if available (from OrderViewSet queryset), otherwise fetch with select_related
+        if hasattr(obj, '_prefetched_objects_cache') and 'items' in obj._prefetched_objects_cache:
+            items = obj._prefetched_objects_cache['items']
+        else:
+            items = obj.items.select_related(
+                'batch', 
+                'batch__variant', 
+                'batch__variant__product',
+                'batch__variant__product__category',
+                'batch__farmer',
+                'batch__farmer__user'
+            ).all()
         return [
             {
                 "id": i.id,

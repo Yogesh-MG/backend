@@ -34,10 +34,17 @@ class UserSerializer(serializers.ModelSerializer):
         return hasattr(obj, 'delivery_partner_profile') or bool(obj.first_name)
 
     def get_remaining_pride_limit(self, obj):
+        # Use prefetched wallet if available (avoid N+1)
+        if hasattr(obj, '_prefetched_objects_cache') and 'wallet' in obj._prefetched_objects_cache:
+            wallet = obj._prefetched_objects_cache['wallet'].first() if obj._prefetched_objects_cache['wallet'] else None
+            if wallet:
+                return str(getattr(wallet, 'accumulated_pride_limit', '0.00'))
+            return '0.00'
+        
+        # Fallback to direct query for single object serialization
         from apps.wallet.models import Wallet
         try:
-            wallet = Wallet.objects.get(user=obj)
-            # Use getattr and catch broad exceptions to handle cases where database columns aren't migrated
+            wallet = Wallet.objects.only('accumulated_pride_limit').get(user=obj)
             return str(getattr(wallet, 'accumulated_pride_limit', '0.00'))
         except Exception:
             return '0.00'

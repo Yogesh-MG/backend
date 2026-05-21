@@ -124,5 +124,9 @@ class WalletDetailSerializer(serializers.ModelSerializer):
     
     def get_transactions(self, obj):
         """Get last 10 transactions."""
-        transactions = obj.transactions.all()[:10]
+        # Use prefetched transactions if available to avoid N+1
+        if hasattr(obj, '_prefetched_objects_cache') and 'transactions' in obj._prefetched_objects_cache:
+            transactions = list(obj._prefetched_objects_cache['transactions'])[:10]
+        else:
+            transactions = obj.transactions.all()[:10]
         return WalletTransactionSerializer(transactions, many=True).data

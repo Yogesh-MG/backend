@@ -243,12 +243,13 @@ class DeliveryEarningsHistoryView(APIView):
         start_date = end_date - timedelta(days=days)
         
         # Get all delivered assignments in date range
+        # Use only() to limit fields fetched since we only need specific data
         assignments = DeliveryAssignment.objects.filter(
             partner=request.user,
             status='DELIVERED',
             delivered_at__date__gte=start_date,
             delivered_at__date__lte=end_date,
-        ).order_by('-delivered_at')
+        ).only('id', 'delivered_at', 'earnings', 'distance_km', 'service').order_by('-delivered_at')
         
         # Calculate daily breakdown
         daily_earnings = {}
