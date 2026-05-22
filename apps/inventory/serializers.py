@@ -74,8 +74,16 @@ class InventoryBatchSerializer(serializers.ModelSerializer):
     base_image = serializers.ImageField(source='variant.product.base_image', read_only=True)
     farmer = FarmerSerializer(read_only=True)
     harvest_date_display = serializers.SerializerMethodField()
+    is_perishable = serializers.BooleanField(source='variant.product.is_perishable', read_only=True)
     price = serializers.DecimalField(source='variant.price', max_digits=10, decimal_places=2, read_only=True)
     mrp = serializers.DecimalField(source='variant.mrp', max_digits=10, decimal_places=2, read_only=True)
+    benefits = serializers.SlugRelatedField(
+        source='variant.product.benefits',
+        many=True,
+        read_only=True,
+        slug_field='benefit'
+    )
+    storage_instructions = serializers.CharField(source='variant.product.storage_instructions', read_only=True)
     
     class Meta:
         model = InventoryBatch
@@ -83,10 +91,15 @@ class InventoryBatchSerializer(serializers.ModelSerializer):
             'id', 'farmer', 'variant', 'product_name', 'product_id', 
             'category_name', 'category_slug', 'description', 'base_image',
             'price', 'mrp', 'stock_level', 'harvest_date', 
-            'harvest_date_display', 'is_organic', 'is_farm_fresh', 'batch_image'
+            'harvest_date_display', 'is_organic', 'is_farm_fresh', 'batch_image',
+            'is_perishable', 'benefits', 'storage_instructions'
         ]
 
     def get_harvest_date_display(self, obj):
+        # Return None for non-perishable products (pots, household items, etc.)
+        if not obj.variant.product.is_perishable:
+            return None
+            
         from django.utils import timezone
         now = timezone.now()
         diff = now - obj.harvest_date

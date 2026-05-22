@@ -93,7 +93,7 @@ class InventoryBatchViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = InventoryBatch.objects.filter(stock_level__gt=0).select_related(
         'variant', 'variant__product', 'variant__product__category',
         'variant__product__subcategory', 'farmer', 'farmer__user'
-    )
+    ).prefetch_related('variant__product__benefits')
     serializer_class = InventoryBatchSerializer
     pagination_class = StandardPagination
     filter_backends = [DjangoFilterBackend, filters.SearchFilter]

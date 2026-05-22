@@ -32,6 +32,7 @@ class Product(models.Model):
     description = models.TextField()
     storage_instructions = models.TextField(help_text="Storage tips for customers")
     base_image = models.ImageField(upload_to='products/', null=True, blank=True)
+    is_perishable = models.BooleanField(default=True, help_text="Whether this product shows harvest date (e.g., vegetables, fruits) or not (e.g., pots, household items)")
     
     # Impact scores (Organic Impact Tracker)
     water_score = models.DecimalField(max_digits=10, decimal_places=2, default=0.00, help_text="Water saved/protected in litres per unit")
