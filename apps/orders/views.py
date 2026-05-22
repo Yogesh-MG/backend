@@ -175,3 +175,36 @@ class OrderViewSet(viewsets.ModelViewSet):
                 {"detail": "Failed to update item: " + str(e)},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
+
+    @action(detail=True, methods=['post'], url_path='cancel')
+    def cancel_order(self, request, tracking_id=None):
+        """Cancel an order (if not yet packed)."""
+        order = self.get_object()
+        
+        # Verify ownership
+        if order.user != request.user:
+            return Response(
+                {"detail": "Permission denied"},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        try:
+            reason = request.data.get('reason', 'User cancelled')
+            
+            result = OrderModificationService.cancel_order(
+                order=order,
+                reason=reason
+            )
+            
+            return Response(result, status=status.HTTP_200_OK)
+            
+        except ValueError as e:
+            return Response(
+                {"detail": str(e)},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        except Exception as e:
+            return Response(
+                {"detail": "Failed to cancel order: " + str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )

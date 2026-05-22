@@ -4,14 +4,14 @@ from .models import Wallet, WalletTransaction, WalletTopup, Partnership, Referra
 
 @admin.register(Wallet)
 class WalletAdmin(admin.ModelAdmin):
-    list_display = ('user', 'balance', 'tier', 'created_at')
+    list_display = ('user', 'balance', 'tier', 'accumulated_pride_limit', 'created_at')
     list_filter = ('tier', 'created_at')
     search_fields = ('user__username', 'user__email')
     readonly_fields = ('created_at', 'updated_at')
     
     fieldsets = (
         ('User', {'fields': ('user',)}),
-        ('Balance', {'fields': ('balance', 'tier')}),
+        ('Balance', {'fields': ('balance', 'tier', 'accumulated_pride_limit')}),
         ('Partnership Tracking', {'fields': ('last_monthly_credit_date', 'last_loyalty_bonus_date')}),
         ('Timestamps', {'fields': ('created_at', 'updated_at')}),
     )

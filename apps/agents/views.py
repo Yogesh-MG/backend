@@ -24,17 +24,18 @@ from apps.agents.serializers import (
 )
 from apps.agents.engine.base import FreshOnAgent
 from apps.agents.tools.customer import customer_tools
+from apps.agents.tools.farmer import farmer_tools
+from apps.agents.tools.founder import founder_tools
 
 logger = logging.getLogger(__name__)
 
 
 def _get_agent_for_type(agent_type: str, user):
     """Create the appropriate agent for the given type."""
-    # For now, all agent types use customer_tools
-    # Later we'll add farmer_tools, delivery_tools
     tool_registries = {
         "CUSTOMER_ASSISTANT": customer_tools,
-        # "FARMER_INVENTORY": farmer_tools,
+        "FARMER_INVENTORY": farmer_tools,
+        "FOUNDER_BI": founder_tools,
         # "DELIVERY_OPTIMIZER": delivery_tools,
     }
     

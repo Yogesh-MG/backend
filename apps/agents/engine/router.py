@@ -9,6 +9,7 @@ For now, it only supports Ollama (local). Cloud escalation
 import requests
 import json
 import logging
+from django.conf import settings
 
 logger = logging.getLogger(__name__)
 
@@ -18,7 +19,7 @@ class LLMRouter:
     Routes LLM requests to the appropriate backend.
     
     Phase 1: Ollama only (local)
-    Phase 2: + DeepSeek-V3 cloud escalation for complex reasoning
+    Phase 2: + Cloud escalation (Groq, Gemini, DeepSeek, or other OpenAI-compatible API)
     """
     
     def __init__(
@@ -28,8 +29,13 @@ class LLMRouter:
         timeout: int = 120,
     ):
         self.ollama_url = ollama_url
-        self.model_name = model_name
+        self.ollama_model = model_name
         self.timeout = timeout
+        
+        # Load cloud configurations from Django settings
+        self.llm_api_key = getattr(settings, "LLM_API_KEY", "")
+        self.llm_base_url = getattr(settings, "LLM_BASE_URL", "https://api.groq.com/openai/v1")
+        self.llm_model = getattr(settings, "LLM_MODEL", "openai/gpt-oss-20b")
     
     def chat(self, messages: list[dict], stream: bool = False) -> str:
         """
@@ -42,34 +48,67 @@ class LLMRouter:
         Returns:
             The AI's response text.
         """
-        payload = {
-            "model": self.model_name,
-            "messages": messages,
-            "stream": False,  # Streaming handled at WebSocket layer later
-        }
+        is_cloud = bool(self.llm_api_key)
+        
+        if is_cloud:
+            # Route to standard OpenAI-compatible API (e.g., Groq)
+            url = f"{self.llm_base_url.rstrip('/')}/chat/completions"
+            headers = {
+                "Authorization": f"Bearer {self.llm_api_key}",
+                "Content-Type": "application/json",
+            }
+            payload = {
+                "model": self.llm_model,
+                "messages": messages,
+                "stream": False,
+            }
+        else:
+            # Fallback to local Ollama
+            url = self.ollama_url
+            headers = {
+                "Content-Type": "application/json",
+            }
+            payload = {
+                "model": self.ollama_model,
+                "messages": messages,
+                "stream": False,
+            }
         
         try:
-            logger.info(f"[LLM] Sending {len(messages)} messages to {self.model_name}")
+            logger.info(
+                f"[LLM] Sending {len(messages)} messages to "
+                f"{self.llm_model if is_cloud else self.ollama_model} "
+                f"({'Cloud' if is_cloud else 'Ollama'})"
+            )
             
             response = requests.post(
-                self.ollama_url,
+                url,
                 json=payload,
+                headers=headers,
                 timeout=self.timeout,
             )
             response.raise_for_status()
             
             data = response.json()
-            ai_reply = data["message"]["content"]
             
-            # Log performance stats
-            total_ms = data.get("total_duration", 0) / 1_000_000
-            eval_count = data.get("eval_count", 0)
-            logger.info(f"[LLM] {eval_count} tokens in {total_ms:.0f}ms")
+            if is_cloud:
+                # Standard OpenAI chat completions format
+                ai_reply = data["choices"][0]["message"]["content"]
+                logger.info("[LLM] Cloud LLM responded successfully.")
+            else:
+                # Ollama format
+                ai_reply = data["message"]["content"]
+                
+                # Log performance stats
+                total_ms = data.get("total_duration", 0) / 1_000_000
+                eval_count = data.get("eval_count", 0)
+                logger.info(f"[LLM] {eval_count} tokens in {total_ms:.0f}ms")
             
             return ai_reply
             
         except requests.ConnectionError:
-            error = "Cannot connect to Ollama. Is it running? (ollama serve)"
+            provider = "Cloud LLM" if is_cloud else "Ollama"
+            error = f"Cannot connect to {provider} at {url}."
             logger.error(f"[LLM] {error}")
             raise ConnectionError(error)
             
@@ -81,6 +120,7 @@ class LLMRouter:
         except Exception as e:
             logger.error(f"[LLM] Unexpected error: {e}")
             raise
+
 
 
 # Singleton instance for the app

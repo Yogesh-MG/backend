@@ -210,10 +210,20 @@ class AgentChatConsumer(AsyncWebsocketConsumer):
             # Import and run the agent
             from apps.agents.engine.base import FreshOnAgent
             from apps.agents.tools.customer import customer_tools
+            from apps.agents.tools.farmer import farmer_tools
+            from apps.agents.tools.founder import founder_tools
+            
+            # Select appropriate tool registry based on agent type
+            tool_registries = {
+                'CUSTOMER_ASSISTANT': customer_tools,
+                'FARMER_INVENTORY': farmer_tools,
+                'FOUNDER_BI': founder_tools,
+            }
+            registry = tool_registries.get(session['agent_type'], customer_tools)
             
             agent = FreshOnAgent(
                 agent_type=session['agent_type'],
-                tool_registry=customer_tools,
+                tool_registry=registry,
                 user=self.user,
             )
             

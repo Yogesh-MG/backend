@@ -222,6 +222,11 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 RAZORPAY_KEY_ID = config("RAZORPAY_KEY_ID", default="")
 RAZORPAY_KEY_SECRET = config("RAZORPAY_KEY_SECRET", default="")
 
+# AI / LLM Configuration (Custom Cloud LLM)
+LLM_API_KEY = config("LLM_API_KEY", default="")
+LLM_BASE_URL = config("LLM_BASE_URL", default="https://api.groq.com/openai/v1")
+LLM_MODEL = config("LLM_MODEL", default="openai/gpt-oss-20b")
+
 # ─── Django Channels & WebSockets ───────────────────────────────────────
 
 CHANNEL_LAYERS = {

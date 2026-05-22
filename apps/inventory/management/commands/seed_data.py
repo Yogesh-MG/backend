@@ -41,7 +41,11 @@ class Command(BaseCommand):
             farmer_profiles.append(profile)
 
         self.stdout.write("Creating Hubs and Pickers...")
-        hub, _ = Hub.objects.get_or_create(name="FreshOn Main Hub", defaults={"latitude": 12.9716, "longitude": 77.5946})
+        hub, created = Hub.objects.get_or_create(name="FreshOn Main Hub", defaults={"latitude": 12.9548049, "longitude": 77.5202638})
+        if not created:
+            hub.latitude = 12.9548049
+            hub.longitude = 77.5202638
+            hub.save()
         
         pickers_data = [
             {"username": "picker1", "name": "Rahul Picker", "pin": "123456"},

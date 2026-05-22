@@ -100,7 +100,8 @@ class OrderModificationService:
     @staticmethod
     @db_transaction.atomic
     def remove_item_from_order(order: Order, order_item_id: int) -> dict:
-        """Remove an item from order and refund wallet if payment was made."""
+        """Remove an item from order and refund wallet if payment was made.
+        Auto-cancels order if no items remain."""
         
         can_modify, reason = OrderModificationService.can_modify_order(order)
         if not can_modify:
@@ -131,6 +132,13 @@ class OrderModificationService:
         # Delete the item
         order_item.delete()
         
+        # Check if order has no items left - auto cancel
+        remaining_items = OrderItem.objects.filter(order=order).count()
+        auto_cancelled = False
+        if remaining_items == 0:
+            auto_cancelled = True
+            OrderModificationService._cancel_order(order, "User removed all items")
+        
         return {
             "removed_item": {
                 "product_name": order_item.product_name,
@@ -142,7 +150,9 @@ class OrderModificationService:
             "wallet_refund": {
                 "id": wallet_transaction.id if wallet_transaction else None,
                 "amount": float(item_total) if wallet_transaction else 0,
-            } if wallet_transaction else None
+            } if wallet_transaction else None,
+            "auto_cancelled": auto_cancelled,
+            "message": "Order cancelled - all items removed" if auto_cancelled else None
         }
 
     @staticmethod
@@ -249,6 +259,54 @@ class OrderModificationService:
         )
         
         return transaction
+    
+    @staticmethod
+    @db_transaction.atomic
+    def cancel_order(order: Order, reason: str = "User cancelled") -> dict:
+        """Cancel an order and refund wallet if payment was made."""
+        
+        can_modify, mod_reason = OrderModificationService.can_modify_order(order)
+        if not can_modify:
+            raise ValueError(f"Cannot cancel order: {mod_reason}")
+        
+        # Refund full wallet amount if payment was completed
+        wallet_refund = None
+        if order.wallet_amount_used > 0 and order.payment_status == 'COMPLETED':
+            wallet_refund = OrderModificationService._refund_to_wallet(
+                order=order,
+                amount=order.wallet_amount_used,
+                reason='ORDER_CANCELLATION',
+                notes=f"Full refund for cancelled order {order.tracking_id}: {reason}"
+            )
+        
+        # Cancel the order
+        OrderModificationService._cancel_order(order, reason)
+        
+        return {
+            "cancelled": True,
+            "tracking_id": order.tracking_id,
+            "reason": reason,
+            "wallet_refund": {
+                "id": wallet_refund.id if wallet_refund else None,
+                "amount": float(order.wallet_amount_used) if wallet_refund else 0,
+            } if wallet_refund else None
+        }
+    
+    @staticmethod
+    def _cancel_order(order: Order, reason: str):
+        """Internal method to mark order as cancelled."""
+        from apps.picker.models import PickerTask
+        
+        order.status = 'CANCELLED'
+        order.save(update_fields=['status', 'updated_at'])
+        
+        # Also cancel any associated picker task
+        try:
+            picker_task = PickerTask.objects.get(order=order)
+            picker_task.status = 'CANCELLED'
+            picker_task.save(update_fields=['status', 'updated_at'])
+        except PickerTask.DoesNotExist:
+            pass
     
     @staticmethod
     def _refund_to_wallet(order: Order, amount: Decimal, reason: str, notes: str) -> WalletTransaction:
