@@ -46,6 +46,7 @@ class FreshOnAgent:
         self.tools = tool_registry
         self.user = user
         self.router = get_router()
+        logger.info(f"[AGENT INIT] agent_type={agent_type}, user={user}, user_type={type(user)}")
     
     def chat(self, session: AgentSession, user_message: str) -> str:
         """
@@ -59,6 +60,9 @@ class FreshOnAgent:
           
         All messages and tool calls are persisted to the database.
         """
+        logger.info(f"[AGENT CHAT START] session_id={session.id}, user_message='{user_message[:50]}...'")
+        logger.info(f"[AGENT CHAT USER] user={self.user}, user_id={getattr(self.user, 'id', None)}, user_type={type(self.user)}")
+        
         # Save the user's message
         AgentMessage.objects.create(
             session=session,
@@ -68,6 +72,7 @@ class FreshOnAgent:
         
         # Build message history from the session
         messages = self._build_messages(session)
+        logger.info(f"[AGENT CHAT] Built messages list with {len(messages)} messages")
         
         # ReAct loop (max MAX_REACT_STEPS iterations)
         for step in range(MAX_REACT_STEPS):
@@ -75,6 +80,7 @@ class FreshOnAgent:
             
             try:
                 ai_reply = self.router.chat(messages)
+                logger.info(f"[AGENT] LLM raw response: {ai_reply[:200]}...")
             except (ConnectionError, TimeoutError) as e:
                 error_msg = f"I'm having trouble connecting right now. Please try again in a moment. 🔄"
                 self._save_agent_message(session, error_msg, is_error=True)
@@ -87,12 +93,18 @@ class FreshOnAgent:
             
             # Check if the AI wants to call a tool
             tool_call = parse_tool_call(ai_reply, self.tools)
+            logger.info(f"[AGENT] Parsed tool_call: {tool_call}")
             
             if tool_call:
                 tool_name = tool_call["tool"]
                 tool_args = tool_call.get("args", {})
                 
+                # Make a copy for database storage (before user injection)
+                import copy
+                tool_args_for_db = copy.deepcopy(tool_args)
+                
                 logger.info(f"[AGENT] Tool call: {tool_name}({tool_args})")
+                logger.info(f"[AGENT] Tool user before execute: user={self.user}, type={type(self.user)}")
                 
                 # Save the thought (tool call request)
                 thought_msg = AgentMessage.objects.create(
@@ -102,15 +114,35 @@ class FreshOnAgent:
                 )
                 
                 # Execute the tool
-                result = self.tools.execute(tool_name, tool_args, user=self.user)
-                result_str = json.dumps(result, indent=2, default=str, ensure_ascii=False)
+                try:
+                    result = self.tools.execute(tool_name, tool_args, user=self.user)
+                    logger.info(f"[AGENT] Tool result type: {type(result)}")
+                    logger.info(f"[AGENT] Tool result: {result}")
+                    
+                    # DEBUG: Check for User objects in result
+                    self._debug_check_user_in_result(result, tool_name)
+                    
+                    # Convert result to JSON-serializable format for storage
+                    result_str = json.dumps(result, indent=2, default=str, ensure_ascii=False)
+                    logger.info(f"[AGENT] JSON serialization successful")
+                    
+                    # Parse back to dict for database storage (ensures it's serializable)
+                    result_for_db = json.loads(result_str)
+                    
+                except Exception as e:
+                    logger.error(f"[AGENT] Tool execution/serialization error: {e}")
+                    logger.error(f"[AGENT] Tool result that failed: {locals().get('result', 'N/A')}")
+                    # Return error to user
+                    error_msg = f"I had trouble checking that for you. Please try again."
+                    self._save_agent_message(session, error_msg, is_error=True)
+                    return error_msg
                 
                 # Save the tool call audit
                 AgentToolCall.objects.create(
                     message=thought_msg,
                     tool_name=tool_name,
-                    arguments=tool_args,
-                    result=result,
+                    arguments=tool_args_for_db,  # Use the copy without User object
+                    result=result_for_db,  # Use the JSON-serialized version
                     is_success="error" not in result if isinstance(result, dict) else True,
                 )
                 
@@ -124,12 +156,14 @@ class FreshOnAgent:
                         "Be natural and friendly."
                     ),
                 })
+                logger.info(f"[AGENT] Added tool result to messages, continuing loop")
                 
                 # Continue the loop — AI will now process the result
                 continue
             
             else:
                 # No tool call — this is the final answer
+                logger.info(f"[AGENT] No tool call detected, returning final answer")
                 self._save_agent_message(session, ai_reply)
                 return ai_reply
         
@@ -137,6 +171,32 @@ class FreshOnAgent:
         fallback = "I need a moment to process this. Could you rephrase your question?"
         self._save_agent_message(session, fallback)
         return fallback
+    
+    def _debug_check_user_in_result(self, result, tool_name: str):
+        """Debug helper to check for User objects in result."""
+        from django.contrib.auth.models import User
+        
+        def check_obj(obj, path=""):
+            if isinstance(obj, User):
+                logger.error(f"[DEBUG] FOUND User object at {path} in {tool_name} result!")
+                return True
+            elif isinstance(obj, dict):
+                found = False
+                for k, v in obj.items():
+                    if check_obj(v, f"{path}.{k}"):
+                        found = True
+                return found
+            elif isinstance(obj, (list, tuple)):
+                found = False
+                for i, v in enumerate(obj):
+                    if check_obj(v, f"{path}[{i}]"):
+                        found = True
+                return found
+            return False
+        
+        found_user = check_obj(result, "result")
+        if found_user:
+            logger.error(f"[DEBUG] User object detected in {tool_name} result structure!")
     
     def _build_messages(self, session: AgentSession) -> list[dict]:
         """

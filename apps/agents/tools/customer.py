@@ -28,13 +28,19 @@ def get_order_status(tracking_id: str, user=None) -> dict:
     """Look up order status by tracking ID, scoped to the current user."""
     from apps.orders.models import Order
     
+    logger.info(f"[TOOL get_order_status] Called with tracking_id={tracking_id}, user={user}, type={type(user)}")
+    
     try:
         # Only allow users to see their own orders
         filters = {"tracking_id": tracking_id.upper().strip()}
         if user:
             filters["user"] = user
+            logger.info(f"[TOOL get_order_status] Filtering by user_id={user.id}")
         
+        logger.info(f"[TOOL get_order_status] Querying with filters: {filters}")
         order = Order.objects.select_related("user").prefetch_related("items").get(**filters)
+        
+        logger.info(f"[TOOL get_order_status] Found order: {order.tracking_id}, user={order.user}")
         
         items = [
             {
@@ -46,7 +52,7 @@ def get_order_status(tracking_id: str, user=None) -> dict:
             for item in order.items.all()
         ]
         
-        return {
+        result = {
             "found": True,
             "tracking_id": order.tracking_id,
             "status": order.get_status_display(),
@@ -61,9 +67,16 @@ def get_order_status(tracking_id: str, user=None) -> dict:
             "placed_at": order.created_at.strftime("%b %d, %Y at %I:%M %p"),
         }
         
+        logger.info(f"[TOOL get_order_status] Returning result: {result}")
+        return result
+        
     except Order.DoesNotExist:
+        logger.warning(f"[TOOL get_order_status] Order not found: {tracking_id}")
         return {"found": False, "error": f"No order found with tracking ID '{tracking_id}'"}
     except Exception as e:
+        logger.error(f"[TOOL get_order_status] Exception: {e}")
+        import traceback
+        logger.error(f"[TOOL get_order_status] Traceback: {traceback.format_exc()}")
         return {"found": False, "error": str(e)}
 
 
@@ -77,15 +90,21 @@ def get_my_recent_orders(user=None) -> list:
     """Get the current user's recent orders."""
     from apps.orders.models import Order
     
+    logger.info(f"[TOOL get_my_recent_orders] Called with user={user}, type={type(user)}")
+    
     if not user:
+        logger.warning("[TOOL get_my_recent_orders] No user provided!")
         return [{"error": "User not authenticated"}]
     
+    logger.info(f"[TOOL get_my_recent_orders] User id={user.id}, username={user.username}")
+    
     orders = Order.objects.filter(user=user).order_by("-created_at")[:5]
+    logger.info(f"[TOOL get_my_recent_orders] Found {orders.count()} orders")
     
     if not orders:
         return [{"message": "You don't have any orders yet. Start shopping! 🛒"}]
     
-    return [
+    result = [
         {
             "tracking_id": o.tracking_id,
             "status": o.get_status_display(),
@@ -95,6 +114,9 @@ def get_my_recent_orders(user=None) -> list:
         }
         for o in orders
     ]
+    
+    logger.info(f"[TOOL get_my_recent_orders] Returning result: {result}")
+    return result
 
 
 @customer_tools.register(
@@ -664,21 +686,27 @@ def get_partnership_details(user=None) -> dict:
         
         tier_benefits = {
             'TIER_1': {
-                'discount': '30% off MRP',
-                'monthly_credit': '10% of invested amount',
-                'annual_bonus': None,
+                'discount': '30% immediate discount on MRP',
+                'wallet_cashback': '10% added back to wallet instantly upon payment',
+                'annual_bonus': '5% accumulated loyalty bonus credited once a year',
+                'referral_bonus': '5% referral bonus on references\' 1st purchase',
+                'total_benefits': 'Up to 50% total discount & savings benefits',
                 'investment': '₹1.5 Lakhs',
             },
             'TIER_2': {
-                'discount': '30% off MRP',
-                'monthly_credit': '10% of invested amount',
-                'annual_bonus': '5% loyalty bonus',
+                'discount': '30% immediate discount on MRP',
+                'wallet_cashback': '10% added back to wallet instantly upon payment',
+                'annual_bonus': '5% accumulated loyalty bonus credited once a year',
+                'referral_bonus': '5% referral bonus on references\' 1st purchase',
+                'total_benefits': 'Up to 50% total discount & savings benefits',
                 'investment': '₹3 Lakhs',
             },
             'TIER_3': {
-                'discount': '30% off MRP',
-                'monthly_credit': '10% of invested amount',
-                'annual_bonus': '5% loyalty bonus + Premium perks',
+                'discount': '30% immediate discount on MRP',
+                'wallet_cashback': '10% added back to wallet instantly upon payment',
+                'annual_bonus': '5% accumulated loyalty bonus credited once a year',
+                'referral_bonus': '5% referral bonus on references\' 1st purchase',
+                'total_benefits': 'Up to 50% total discount & savings benefits + Premium perks',
                 'investment': '₹5 Lakhs',
             },
         }
@@ -708,11 +736,23 @@ def get_partnership_details(user=None) -> dict:
     except Partnership.DoesNotExist:
         return {
             "is_partner": False,
-            "message": "You are not a PRIDE partner yet. Join PRIDE to get 30% off all orders!",
+            "message": "You are not a PRIDE partner yet. Join PRIDE to earn up to 50% total discount & savings benefits!",
             "tiers_available": [
-                {"tier": "Tier 1", "investment": "₹1.5L", "benefits": "30% discount + 10% monthly credit"},
-                {"tier": "Tier 2", "investment": "₹3L", "benefits": "30% discount + 10% monthly + 5% annual bonus"},
-                {"tier": "Tier 3", "investment": "₹5L", "benefits": "30% discount + 10% monthly + Premium perks"},
+                {
+                    "tier": "Tier 1", 
+                    "investment": "₹1.5L", 
+                    "benefits": "Up to 50% total benefits: 30% immediate discount + 10% wallet cashback + 5% annual loyalty bonus + 5% referral reference bonus"
+                },
+                {
+                    "tier": "Tier 2", 
+                    "investment": "₹3L", 
+                    "benefits": "Up to 50% total benefits: 30% immediate discount + 10% wallet cashback + 5% annual loyalty bonus + 5% referral reference bonus"
+                },
+                {
+                    "tier": "Tier 3", 
+                    "investment": "₹5L", 
+                    "benefits": "Up to 50% total benefits: 30% immediate discount + 10% wallet cashback + 5% annual loyalty bonus + 5% referral reference bonus + Premium perks"
+                },
             ],
         }
     except Exception as e:

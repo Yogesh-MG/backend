@@ -130,21 +130,28 @@ def chat(request, session_id):
     POST /api/agents/sessions/<session_id>/chat/
     Body: {"message": "Where is my order FRSH-A1B2C3?"}
     """
+    logger.info(f"[API CHAT] Request from user={request.user}, session_id={session_id}")
+    logger.info(f"[API CHAT] User type={type(request.user)}, user_id={request.user.id}")
+    
     # Validate input
     input_serializer = ChatInputSerializer(data=request.data)
     input_serializer.is_valid(raise_exception=True)
     user_message = input_serializer.validated_data["message"]
+    logger.info(f"[API CHAT] Message: {user_message}")
     
     # Get the session
     try:
         session = AgentSession.objects.get(id=session_id, user=request.user)
+        logger.info(f"[API CHAT] Found session: {session.id}, agent_type={session.agent_type}")
     except AgentSession.DoesNotExist:
+        logger.error(f"[API CHAT] Session not found: {session_id}")
         return Response(
             {"error": "Session not found"},
             status=status.HTTP_404_NOT_FOUND,
         )
     
     if session.status != "ACTIVE":
+        logger.warning(f"[API CHAT] Session not active: {session.status}")
         return Response(
             {"error": "This session is no longer active"},
             status=status.HTTP_400_BAD_REQUEST,
@@ -152,11 +159,15 @@ def chat(request, session_id):
     
     # Run the agent
     agent = _get_agent_for_type(session.agent_type, request.user)
+    logger.info(f"[API CHAT] Agent created with user={request.user}")
     
     try:
         reply = agent.chat(session, user_message)
+        logger.info(f"[API CHAT] Agent reply: {reply[:100]}...")
     except Exception as e:
         logger.error(f"[API] Agent error: {e}")
+        import traceback
+        logger.error(f"[API] Traceback: {traceback.format_exc()}")
         return Response(
             {"error": "Agent encountered an error. Please try again."},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR,
