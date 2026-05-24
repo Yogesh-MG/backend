@@ -67,11 +67,17 @@ class LLMRouter:
                 "Authorization": f"Bearer {self.llm_api_key}",
                 "Content-Type": "application/json",
             }
+            
+            # Kimi reasoning models (like kimi-k2.5 or kimi-k2.6) strictly require temperature to be 1.0
+            temperature = self.llm_temperature
+            if "kimi-k2.5" in self.llm_model.lower() or "kimi-k2.6" in self.llm_model.lower():
+                temperature = 1.0
+
             payload = {
                 "model": self.llm_model,
                 "messages": messages,
                 "stream": False,
-                "temperature": self.llm_temperature,
+                "temperature": temperature,
                 "max_tokens": self.llm_max_tokens,
             }
         else:
