@@ -222,10 +222,12 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 RAZORPAY_KEY_ID = config("RAZORPAY_KEY_ID", default="")
 RAZORPAY_KEY_SECRET = config("RAZORPAY_KEY_SECRET", default="")
 
-# AI / LLM Configuration (Custom Cloud LLM)
+# AI / LLM Configuration (Moonshot AI - Kimi 2.5)
+# Moonshot AI provides OpenAI-compatible API for Kimi models
+# Get your API key from: https://platform.moonshot.cn/
 LLM_API_KEY = config("LLM_API_KEY", default="")
-LLM_BASE_URL = config("LLM_BASE_URL", default="https://api.groq.com/openai/v1")
-LLM_MODEL = config("LLM_MODEL", default="openai/gpt-oss-20b")
+LLM_BASE_URL = config("LLM_BASE_URL", default="https://api.moonshot.cn/v1")
+LLM_MODEL = config("LLM_MODEL", default="kimi-k2.5")
 
 # ─── Django Channels & WebSockets ───────────────────────────────────────
 

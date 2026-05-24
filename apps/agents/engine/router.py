@@ -1,9 +1,11 @@
 """
 LLM Router — Sends requests to local Ollama or cloud API.
 
-This is the "NeMo Claw Router" from the architecture pitch.
-For now, it only supports Ollama (local). Cloud escalation
-(DeepSeek-V3) will be added in Phase 2.
+Supports:
+- Local: Ollama (llama3.2, etc.)
+- Cloud: Moonshot AI (Kimi 2.5), Groq, OpenAI, and other OpenAI-compatible APIs
+
+Default Cloud: Moonshot AI (Kimi 2.5)
 """
 
 import requests
@@ -18,8 +20,11 @@ class LLMRouter:
     """
     Routes LLM requests to the appropriate backend.
     
-    Phase 1: Ollama only (local)
-    Phase 2: + Cloud escalation (Groq, Gemini, DeepSeek, or other OpenAI-compatible API)
+    Supports:
+    - Local: Ollama (llama3.2, etc.)
+    - Cloud: Moonshot AI (Kimi 2.5), Groq, OpenAI, and other OpenAI-compatible APIs
+    
+    Default Cloud: Moonshot AI (Kimi 2.5)
     """
     
     def __init__(
@@ -33,9 +38,14 @@ class LLMRouter:
         self.timeout = timeout
         
         # Load cloud configurations from Django settings
+        # Default: Moonshot AI (Kimi 2.5)
         self.llm_api_key = getattr(settings, "LLM_API_KEY", "")
-        self.llm_base_url = getattr(settings, "LLM_BASE_URL", "https://api.groq.com/openai/v1")
-        self.llm_model = getattr(settings, "LLM_MODEL", "openai/gpt-oss-20b")
+        self.llm_base_url = getattr(settings, "LLM_BASE_URL", "https://api.moonshot.cn/v1")
+        self.llm_model = getattr(settings, "LLM_MODEL", "kimi-k2.5")
+        
+        # Optional: Temperature and max tokens (can be configured via settings)
+        self.llm_temperature = getattr(settings, "LLM_TEMPERATURE", 0.7)
+        self.llm_max_tokens = getattr(settings, "LLM_MAX_TOKENS", 4096)
     
     def chat(self, messages: list[dict], stream: bool = False) -> str:
         """
@@ -51,7 +61,7 @@ class LLMRouter:
         is_cloud = bool(self.llm_api_key)
         
         if is_cloud:
-            # Route to standard OpenAI-compatible API (e.g., Groq)
+            # Route to standard OpenAI-compatible API (Moonshot AI, Groq, OpenAI, etc.)
             url = f"{self.llm_base_url.rstrip('/')}/chat/completions"
             headers = {
                 "Authorization": f"Bearer {self.llm_api_key}",
@@ -61,6 +71,8 @@ class LLMRouter:
                 "model": self.llm_model,
                 "messages": messages,
                 "stream": False,
+                "temperature": self.llm_temperature,
+                "max_tokens": self.llm_max_tokens,
             }
         else:
             # Fallback to local Ollama
@@ -75,10 +87,11 @@ class LLMRouter:
             }
         
         try:
+            provider_name = "Moonshot AI" if "moonshot" in self.llm_base_url else "Cloud LLM"
             logger.info(
                 f"[LLM] Sending {len(messages)} messages to "
                 f"{self.llm_model if is_cloud else self.ollama_model} "
-                f"({'Cloud' if is_cloud else 'Ollama'})"
+                f"({provider_name if is_cloud else 'Ollama'})"
             )
             
             response = requests.post(
