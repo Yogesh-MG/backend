@@ -42,6 +42,7 @@ class LLMRouter:
         self.llm_api_key = getattr(settings, "LLM_API_KEY", "")
         self.llm_base_url = getattr(settings, "LLM_BASE_URL", "https://api.moonshot.cn/v1")
         self.llm_model = getattr(settings, "LLM_MODEL", "kimi-k2.5")
+        self.llm_deep_think = getattr(settings, "LLM_DEEP_THINK", False)
         
         # Optional: Temperature and max tokens (can be configured via settings)
         self.llm_temperature = getattr(settings, "LLM_TEMPERATURE", 0.7)
@@ -70,7 +71,8 @@ class LLMRouter:
             
             # Kimi reasoning models (like kimi-k2.5 or kimi-k2.6) strictly require temperature to be 1.0
             temperature = self.llm_temperature
-            if "kimi-k2.5" in self.llm_model.lower() or "kimi-k2.6" in self.llm_model.lower():
+            is_kimi_reasoning = "kimi-k2.5" in self.llm_model.lower() or "kimi-k2.6" in self.llm_model.lower()
+            if is_kimi_reasoning:
                 temperature = 1.0
 
             payload = {
@@ -80,6 +82,12 @@ class LLMRouter:
                 "temperature": temperature,
                 "max_tokens": self.llm_max_tokens,
             }
+            
+            # Control Kimi Deep Think (thinking mode)
+            if is_kimi_reasoning:
+                payload["thinking"] = {
+                    "type": "enabled" if self.llm_deep_think else "disabled"
+                }
         else:
             # Fallback to local Ollama
             url = self.ollama_url

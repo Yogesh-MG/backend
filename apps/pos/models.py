@@ -10,6 +10,7 @@ PosCustomer       — walk-in customer for loyalty/PRIDE integration.
 PosSettings       — terminal-wide configuration (discounts, rounding).
 CompanyProfile    — B2B corporate client for GST invoicing.
 PosInvoiceCounter — sequential tax invoice number generator.
+SupportTicket     — customer support tickets with AI sentiment analysis.
 """
 import uuid
 from decimal import Decimal
@@ -360,3 +361,156 @@ class PosWastageLog(models.Model):
         ordering = ['-created_at']
         verbose_name = "POS Wastage Log"
         verbose_name_plural = "POS Wastage Logs"
+
+
+# =============================================================================
+# SUPPORT TICKET MODEL
+# =============================================================================
+
+class SupportTicket(models.Model):
+    """Customer support tickets with AI-powered sentiment analysis."""
+    
+    CATEGORY_CHOICES = [
+        ('Late Delivery', 'Late Delivery'),
+        ('Damaged Product', 'Damaged Product'),
+        ('Payment Issue', 'Payment Issue'),
+        ('App Issue', 'App Issue'),
+        ('Wrong Item', 'Wrong Item Delivered'),
+        ('Refund Request', 'Refund Request'),
+        ('Quality Concern', 'Quality Concern'),
+        ('Other', 'Other'),
+    ]
+    
+    STATUS_CHOICES = [
+        ('open', 'Open'),
+        ('in_progress', 'In Progress'),
+        ('resolved', 'Resolved'),
+        ('closed', 'Closed'),
+    ]
+    
+    SENTIMENT_CHOICES = [
+        ('angry', 'Angry'),
+        ('frustrated', 'Frustrated'),
+        ('neutral', 'Neutral'),
+        ('happy', 'Happy'),
+    ]
+    
+    id = models.CharField(max_length=20, primary_key=True, editable=False)
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='support_tickets',
+        null=True,
+        blank=True
+    )
+    customer_name = models.CharField(max_length=100)
+    customer_phone = models.CharField(max_length=15, blank=True)
+    customer_email = models.EmailField(blank=True)
+    
+    # Ticket content
+    subject = models.CharField(max_length=255)
+    category = models.CharField(max_length=50, choices=CATEGORY_CHOICES, default='Other')
+    message = models.TextField()
+    
+    # AI-powered fields
+    sentiment = models.CharField(max_length=20, choices=SENTIMENT_CHOICES, default='neutral')
+    sentiment_score = models.DecimalField(max_digits=4, decimal_places=2, default=0.00, 
+                                          help_text="Sentiment score from -1.0 to 1.0")
+    ai_suggested_reply = models.TextField(blank=True, help_text="AI-generated reply suggestion")
+    
+    # Related order (optional)
+    related_order = models.CharField(max_length=20, blank=True, help_text="Order tracking ID if applicable")
+    
+    # SLA tracking
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='open')
+    sla_minutes = models.PositiveIntegerField(default=120, help_text="SLA time in minutes")
+    sla_deadline = models.DateTimeField(null=True, blank=True)
+    resolved_at = models.DateTimeField(null=True, blank=True)
+    
+    # Assignment
+    assigned_to = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='assigned_tickets'
+    )
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        ordering = ['-created_at']
+        verbose_name = "Support Ticket"
+        verbose_name_plural = "Support Tickets"
+    
+    def save(self, *args, **kwargs):
+        # Generate ticket ID
+        if not self.id:
+            self.id = self._generate_ticket_id()
+        
+        # Set SLA deadline
+        if not self.sla_deadline:
+            from datetime import timedelta
+            self.sla_deadline = self.created_at + timedelta(minutes=self.sla_minutes)
+        
+        # AI Sentiment Analysis
+        if not self.sentiment or self.sentiment == 'neutral':
+            self._analyze_sentiment()
+        
+        super().save(*args, **kwargs)
+    
+    def _generate_ticket_id(self) -> str:
+        """Generate unique ticket ID."""
+        import random
+        return f"TKT-{random.randint(10000, 99999)}"
+    
+    def _analyze_sentiment(self):
+        """AI-powered sentiment analysis of the ticket message."""
+        message_lower = self.message.lower()
+        
+        # Negative keywords
+        angry_keywords = ['angry', 'furious', 'terrible', 'worst', 'hate', 'unacceptable', 'disgusting']
+        frustrated_keywords = ['frustrated', 'annoyed', 'disappointed', 'bad', 'poor', 'slow', 'late', 'missing']
+        
+        # Positive keywords
+        happy_keywords = ['happy', 'great', 'excellent', 'love', 'amazing', 'perfect', 'thank', 'good']
+        
+        angry_count = sum(1 for kw in angry_keywords if kw in message_lower)
+        frustrated_count = sum(1 for kw in frustrated_keywords if kw in message_lower)
+        happy_count = sum(1 for kw in happy_keywords if kw in message_lower)
+        
+        # Determine sentiment
+        if angry_count > 0:
+            self.sentiment = 'angry'
+            self.sentiment_score = Decimal('-0.7') - Decimal(min(angry_count * 0.1, 0.3))
+        elif frustrated_count > 0:
+            self.sentiment = 'frustrated'
+            self.sentiment_score = Decimal('-0.4') - Decimal(min(frustrated_count * 0.05, 0.3))
+        elif happy_count > 0:
+            self.sentiment = 'happy'
+            self.sentiment_score = Decimal('0.5') + Decimal(min(happy_count * 0.1, 0.5))
+        else:
+            self.sentiment = 'neutral'
+            self.sentiment_score = Decimal('0.0')
+        
+        # Adjust based on category
+        if self.category in ['Late Delivery', 'Damaged Product', 'Wrong Item']:
+            self.sentiment_score -= Decimal('0.2')
+        
+        # Clamp to valid range
+        self.sentiment_score = max(Decimal('-1.0'), min(Decimal('1.0'), self.sentiment_score))
+    
+    @property
+    def sla_remaining_minutes(self) -> int:
+        """Calculate remaining SLA minutes."""
+        if self.status in ['resolved', 'closed']:
+            return 0
+        if not self.sla_deadline:
+            return self.sla_minutes
+        
+        remaining = (self.sla_deadline - timezone.now()).total_seconds() / 60
+        return max(0, int(remaining))
+    
+    def __str__(self):
+        return f"{self.id} — {self.subject[:50]} ({self.sentiment})"

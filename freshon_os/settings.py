@@ -228,6 +228,7 @@ RAZORPAY_KEY_SECRET = config("RAZORPAY_KEY_SECRET", default="")
 LLM_API_KEY = config("LLM_API_KEY", default="")
 LLM_BASE_URL = config("LLM_BASE_URL", default="https://api.moonshot.cn/v1")
 LLM_MODEL = config("LLM_MODEL", default="kimi-k2.5")
+LLM_DEEP_THINK = config("LLM_DEEP_THINK", default=False, cast=bool)
 
 # ─── Django Channels & WebSockets ───────────────────────────────────────
 
