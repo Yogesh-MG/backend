@@ -95,3 +95,19 @@ class ProductBenefit(models.Model):
 
     def __str__(self):
         return self.benefit
+
+
+class ProductImage(models.Model):
+    """Additional images for a product."""
+    product = models.ForeignKey(Product, on_delete=models.CASCADE, related_name='images')
+    image = models.ImageField(upload_to='products/gallery/')
+    alt_text = models.CharField(max_length=255, blank=True, help_text="Alt text for accessibility")
+    order = models.PositiveIntegerField(default=0, help_text="Display order (0 = first)")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['order', 'created_at']
+        verbose_name_plural = "Product Images"
+
+    def __str__(self):
+        return f"{self.product.name} - Image {self.order + 1}"

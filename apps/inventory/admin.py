@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import Product, Category, SubCategory, InventoryBatch, ProductBenefit, ProductVariant
+from .models import Product, Category, SubCategory, InventoryBatch, ProductBenefit, ProductVariant, ProductImage
 
 # Register your models here.
 @admin.register(Category)
@@ -21,12 +21,26 @@ class ProductBenefitInline(admin.TabularInline):
     model = ProductBenefit
     extra = 1
 
+
+class ProductImageInline(admin.TabularInline):
+    model = ProductImage
+    extra = 1
+    fields = ['image', 'alt_text', 'order']
+
 @admin.register(Product)
 class ProductAdmin(admin.ModelAdmin):
     list_display = ('name', 'category', 'subcategory')
     list_filter = ('category', 'subcategory')
     search_fields = ('name',)
-    inlines = [ProductVariantInline, ProductBenefitInline]
+    inlines = [ProductVariantInline, ProductBenefitInline, ProductImageInline]
+
+
+@admin.register(ProductImage)
+class ProductImageAdmin(admin.ModelAdmin):
+    list_display = ('product', 'alt_text', 'order', 'created_at')
+    list_filter = ('product__category',)
+    search_fields = ('product__name', 'alt_text')
+    ordering = ['product', 'order', 'created_at']
 
 @admin.register(ProductVariant)
 class ProductVariantAdmin(admin.ModelAdmin):

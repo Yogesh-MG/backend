@@ -84,6 +84,28 @@ class OrderModificationService:
                 notes=f"Product added to order {order.tracking_id}: {order_item.product_name}"
             )
         
+        # Determine if additional payment is required
+        additional_payment_required = False
+        additional_payment_amount = Decimal('0')
+        
+        # If order was paid via non-wallet method and new total exceeds original paid amount
+        if order.payment_status == 'COMPLETED' and order.wallet_amount_used == 0:
+            # Calculate the original paid amount (before adding this item)
+            original_paid = order.total - item_total
+            if order.total > original_paid:
+                additional_payment_required = True
+                additional_payment_amount = item_total
+        
+        # If wallet was used but doesn't have enough balance for the addition
+        if wallet_transaction and order.wallet_amount_used > 0:
+            try:
+                wallet = Wallet.objects.get(user=order.user)
+                if wallet.balance < 0:
+                    additional_payment_required = True
+                    additional_payment_amount = abs(wallet.balance)
+            except Wallet.DoesNotExist:
+                pass
+        
         return {
             "order_item_id": order_item.id,
             "product_name": order_item.product_name,
@@ -94,7 +116,13 @@ class OrderModificationService:
             "wallet_transaction": {
                 "id": wallet_transaction.id if wallet_transaction else None,
                 "amount": float(item_total) if wallet_transaction else 0,
-            } if wallet_transaction else None
+            } if wallet_transaction else None,
+            "payment": {
+                "additional_payment_required": additional_payment_required,
+                "additional_payment_amount": float(additional_payment_amount),
+                "order_total": float(order.total),
+                "payment_status": order.payment_status,
+            }
         }
     
     @staticmethod

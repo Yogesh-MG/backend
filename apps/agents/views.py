@@ -26,6 +26,7 @@ from apps.agents.engine.base import FreshOnAgent
 from apps.agents.tools.customer import customer_tools
 from apps.agents.tools.farmer import farmer_tools
 from apps.agents.tools.founder import founder_tools
+from apps.agents.tools.bi_comprehensive import bi_tools
 
 logger = logging.getLogger(__name__)
 
@@ -36,6 +37,8 @@ def _get_agent_for_type(agent_type: str, user):
         "CUSTOMER_ASSISTANT": customer_tools,
         "FARMER_INVENTORY": farmer_tools,
         "FOUNDER_BI": founder_tools,
+        "BI_COMPREHENSIVE": bi_tools,  # New comprehensive BI agent
+        "OWNER_AI": bi_tools,  # Alias for owner queries
         # "DELIVERY_OPTIMIZER": delivery_tools,
     }
     
