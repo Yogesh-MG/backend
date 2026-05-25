@@ -10,6 +10,7 @@ These endpoints provide operational data for the FOS frontend:
 - Inventory intelligence
 """
 
+import logging
 from datetime import datetime, timedelta
 from decimal import Decimal
 from django.utils import timezone
@@ -26,6 +27,8 @@ from apps.accounts.models import User
 from apps.orders.models import Order
 from apps.inventory.models import InventoryBatch
 from apps.pos.models import PosTransaction
+
+logger = logging.getLogger(__name__)
 
 
 # ─── Helper Functions ─────────────────────────────────────────────────────────
