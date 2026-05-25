@@ -110,6 +110,7 @@ class RazorpayVerifyView(APIView):
         razorpay_payment_id = request.data.get('razorpay_payment_id')
         razorpay_order_id = request.data.get('razorpay_order_id')
         razorpay_signature = request.data.get('razorpay_signature')
+        freshon_order_id = request.data.get('freshon_order_id')  # Our internal order tracking_id
         
         if not all([razorpay_payment_id, razorpay_order_id, razorpay_signature]):
             return Response(
@@ -129,6 +130,49 @@ class RazorpayVerifyView(APIView):
             payment = client.payment.fetch(razorpay_payment_id)
             
             if payment['status'] in ['captured', 'authorized']:
+                # Create or update PaymentTransaction record
+                from apps.orders.models import Order
+                from decimal import Decimal
+                
+                try:
+                    # Try to find the order by tracking_id if provided
+                    if freshon_order_id:
+                        order = Order.objects.get(tracking_id=freshon_order_id)
+                    else:
+                        # Fallback: try to find by razorpay_order_id in existing transactions
+                        pt = PaymentTransaction.objects.filter(razorpay_order_id=razorpay_order_id).first()
+                        if pt:
+                            order = pt.order
+                        else:
+                            order = None
+                    
+                    if order:
+                        # Create or update PaymentTransaction
+                        pt, created = PaymentTransaction.objects.update_or_create(
+                            order=order,
+                            defaults={
+                                'razorpay_order_id': razorpay_order_id,
+                                'razorpay_payment_id': razorpay_payment_id,
+                                'razorpay_signature': razorpay_signature,
+                                'amount': Decimal(str(payment['amount'])) / Decimal('100'),  # Convert paise to rupees
+                                'currency': payment.get('currency', 'INR'),
+                                'status': 'COMPLETED',
+                            }
+                        )
+                        
+                        # Update order payment status
+                        if not order.is_paid:
+                            order.is_paid = True
+                            order.payment_status = 'COMPLETED'
+                            order.save(update_fields=['is_paid', 'payment_status'])
+                except Order.DoesNotExist:
+                    pass  # Order not found, but payment is still verified
+                except Exception as e:
+                    # Log error but don't fail the verification
+                    import logging
+                    logger = logging.getLogger(__name__)
+                    logger.error(f"Failed to create PaymentTransaction: {e}")
+                
                 return Response({
                     'success': True,
                     'message': 'Payment verified successfully',

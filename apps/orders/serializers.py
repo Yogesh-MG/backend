@@ -88,13 +88,18 @@ class OrderListSerializer(serializers.ModelSerializer):
 class OrderCreateSerializer(serializers.ModelSerializer):
     items = OrderItemSerializer(many=True)
     organic_impact = serializers.SerializerMethodField(read_only=True)
+    # Razorpay payment details (write-only, for creating PaymentTransaction)
+    razorpay_payment_id = serializers.CharField(write_only=True, required=False, allow_blank=True)
+    razorpay_order_id = serializers.CharField(write_only=True, required=False, allow_blank=True)
+    razorpay_signature = serializers.CharField(write_only=True, required=False, allow_blank=True)
 
     class Meta:
         model = Order
         fields = [
             'id', 'tracking_id', 'address_title', 'address_line', 'delivery_slot', 
             'payment_method', 'items', 'subtotal', 'delivery_fee', 'total', 'is_paid',
-            'wallet_amount_used', 'remaining_amount', 'organic_impact'
+            'wallet_amount_used', 'remaining_amount', 'organic_impact',
+            'razorpay_payment_id', 'razorpay_order_id', 'razorpay_signature'
         ]
         read_only_fields = ['id', 'tracking_id', 'subtotal', 'delivery_fee', 'total']
 
@@ -113,6 +118,10 @@ class OrderCreateSerializer(serializers.ModelSerializer):
         remaining_amount_passed = validated_data.pop('remaining_amount', Decimal('0.00'))
         validated_data.pop('member_discount', None)
         validated_data.pop('pride_limit_used', None)
+        # Extract Razorpay payment details
+        razorpay_payment_id = validated_data.pop('razorpay_payment_id', None)
+        razorpay_order_id = validated_data.pop('razorpay_order_id', None)
+        razorpay_signature = validated_data.pop('razorpay_signature', None)
         user = validated_data.pop('user', self.context['request'].user)
         delivery_slot_type = validated_data.get('delivery_slot', 'EXPRESS')
 
@@ -317,6 +326,19 @@ class OrderCreateSerializer(serializers.ModelSerializer):
             impact.total_farmer += order_farmer
             impact.total_orders += 1
             impact.save()
+
+            # Create PaymentTransaction for Razorpay payments
+            if is_paid and razorpay_payment_id and razorpay_order_id:
+                from apps.payment.models import PaymentTransaction
+                PaymentTransaction.objects.create(
+                    order=order,
+                    razorpay_payment_id=razorpay_payment_id,
+                    razorpay_order_id=razorpay_order_id,
+                    razorpay_signature=razorpay_signature or '',
+                    amount=order.total - wallet_amount_used,  # Amount paid via Razorpay
+                    currency='INR',
+                    status='COMPLETED'
+                )
 
             return order
 
