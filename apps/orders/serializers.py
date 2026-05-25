@@ -331,21 +331,26 @@ class OrderDetailSerializer(serializers.ModelSerializer):
         fields = '__all__'
 
     def get_amount_due(self, obj):
-        total_paid = Decimal('0')
-        total_paid += obj.wallet_amount_used
+        """Compute the difference between order total and total paid amount."""
+        total_paid = obj.wallet_amount_used or Decimal('0')
+        # Include completed payment transaction amount if exists
         try:
             pt = obj.payment_transaction
-            if pt.status == 'COMPLETED':
+            if pt and pt.status == 'COMPLETED':
                 total_paid += pt.amount
         except Exception:
             pass
-        return float(max(Decimal('0'), obj.total - total_paid))
+        due = obj.total - total_paid
+        return float(max(Decimal('0'), due))
 
     def get_additional_payment_required(self, obj):
-        # Additional payment is required if the order is completed/confirmed but has outstanding balance due to modifications
-        if obj.payment_status == 'COMPLETED' and obj.status not in ['CANCELLED', 'DELIVERED']:
-            return self.get_amount_due(obj) > 0.05
-        return False
+        """Returns True if the order has been modified and needs additional payment."""
+        if obj.payment_status != 'COMPLETED':
+            return False
+        if obj.status in ('CANCELLED', 'DELIVERED'):
+            return False
+        amount_due = self.get_amount_due(obj)
+        return amount_due > 0.05
 
     def get_organic_impact(self, obj):
         user = self.context['request'].user if 'request' in self.context else obj.user

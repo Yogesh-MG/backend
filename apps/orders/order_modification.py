@@ -83,9 +83,9 @@ class OrderModificationService:
                 reason='PRODUCT_ADDITION',
                 notes=f"Product added to order {order.tracking_id}: {order_item.product_name}"
             )
-            if wallet_transaction:
-                order.wallet_amount_used += item_total
-                order.save(update_fields=['wallet_amount_used', 'updated_at'])
+            # Sync wallet_amount_used on the order
+            order.wallet_amount_used += item_total
+            order.save(update_fields=['wallet_amount_used', 'updated_at'])
         
         # Determine if additional payment is required
         additional_payment_required = False
@@ -159,9 +159,9 @@ class OrderModificationService:
                 reason='PRODUCT_REMOVAL',
                 notes=f"Refund for removed product from order {order.tracking_id}: {order_item.product_name}"
             )
-            if wallet_transaction:
-                order.wallet_amount_used -= item_total
-                order.save(update_fields=['wallet_amount_used', 'updated_at'])
+            # Sync wallet_amount_used on the order
+            order.wallet_amount_used = max(Decimal('0'), order.wallet_amount_used - item_total)
+            order.save(update_fields=['wallet_amount_used', 'updated_at'])
         
         # Delete the item
         order_item.delete()
@@ -244,9 +244,9 @@ class OrderModificationService:
                     reason='PRODUCT_UPDATE',
                     notes=f"Quantity increased for {order_item.product_name} in order {order.tracking_id}"
                 )
-                if wallet_transaction:
-                    order.wallet_amount_used += diff_total
-                    order.save(update_fields=['wallet_amount_used', 'updated_at'])
+                # Sync wallet_amount_used on the order
+                order.wallet_amount_used += diff_total
+                order.save(update_fields=['wallet_amount_used', 'updated_at'])
             else:
                 # Refund
                 wallet_transaction = OrderModificationService._refund_to_wallet(
@@ -255,10 +255,28 @@ class OrderModificationService:
                     reason='PRODUCT_UPDATE',
                     notes=f"Quantity decreased for {order_item.product_name} in order {order.tracking_id}"
                 )
-                if wallet_transaction:
-                    order.wallet_amount_used -= abs(diff_total)
-                    order.save(update_fields=['wallet_amount_used', 'updated_at'])
+                # Sync wallet_amount_used on the order
+                order.wallet_amount_used = max(Decimal('0'), order.wallet_amount_used - abs(diff_total))
+                order.save(update_fields=['wallet_amount_used', 'updated_at'])
                 
+        # Determine if additional payment is required for quantity increase
+        additional_payment_required = False
+        additional_payment_amount = Decimal('0')
+        if diff > 0 and order.payment_status == 'COMPLETED':
+            # Check total paid amount
+            total_paid = order.wallet_amount_used
+            try:
+                from apps.payment.models import PaymentTransaction
+                pt = PaymentTransaction.objects.filter(order=order, status='COMPLETED').first()
+                if pt:
+                    total_paid += pt.amount
+            except Exception:
+                pass
+            due = order.total - total_paid
+            if due > Decimal('0.05'):
+                additional_payment_required = True
+                additional_payment_amount = due
+
         return {
             "order_item_id": order_item.id,
             "product_name": order_item.product_name,
@@ -271,7 +289,13 @@ class OrderModificationService:
                 "id": wallet_transaction.id if wallet_transaction else None,
                 "amount": float(abs(diff_total)) if wallet_transaction else 0,
                 "type": "REFUND" if diff < 0 else "DEBIT"
-            } if wallet_transaction else None
+            } if wallet_transaction else None,
+            "payment": {
+                "additional_payment_required": additional_payment_required,
+                "additional_payment_amount": float(additional_payment_amount),
+                "order_total": float(order.total),
+                "payment_status": order.payment_status,
+            }
         }
     
     @staticmethod
