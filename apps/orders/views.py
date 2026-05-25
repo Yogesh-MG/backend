@@ -3,7 +3,8 @@ from rest_framework.response import Response
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.decorators import action
 from django.shortcuts import get_object_or_404
-from django.db import Prefetch, transaction as db_transaction
+from django.db import transaction as db_transaction
+from django.db.models import Prefetch
 from decimal import Decimal
 from .models import Order, OrderItem
 from .serializers import OrderCreateSerializer, OrderDetailSerializer, OrderListSerializer
