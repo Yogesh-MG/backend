@@ -3,7 +3,8 @@ from rest_framework.response import Response
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.decorators import action
 from django.shortcuts import get_object_or_404
-from django.db.models import Prefetch
+from django.db import Prefetch, transaction as db_transaction
+from decimal import Decimal
 from .models import Order, OrderItem
 from .serializers import OrderCreateSerializer, OrderDetailSerializer, OrderListSerializer
 from .order_modification import OrderModificationService
@@ -206,5 +207,115 @@ class OrderViewSet(viewsets.ModelViewSet):
         except Exception as e:
             return Response(
                 {"detail": "Failed to cancel order: " + str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+    @action(detail=True, methods=['post'], url_path='confirm-modification-payment')
+    def confirm_modification_payment(self, request, tracking_id=None):
+        """Confirm additional payment for modified order using wallet and/or Razorpay."""
+        order = self.get_object()
+        
+        # Verify ownership
+        if order.user != request.user:
+            return Response(
+                {"detail": "Permission denied"},
+                status=status.HTTP_403_FORBIDDEN
+            )
+            
+        wallet_amount = Decimal(str(request.data.get('wallet_amount', 0)))
+        razorpay_payment_id = request.data.get('razorpay_payment_id')
+        razorpay_order_id = request.data.get('razorpay_order_id')
+        razorpay_signature = request.data.get('razorpay_signature')
+        
+        try:
+            with db_transaction.atomic():
+                # 1. Process Wallet deduction if any
+                if wallet_amount > 0:
+                    from apps.wallet.models import Wallet, WalletTransaction
+                    try:
+                        wallet = Wallet.objects.get(user=request.user)
+                    except Wallet.DoesNotExist:
+                        wallet = Wallet.objects.create(user=request.user)
+                        
+                    if wallet.balance < wallet_amount:
+                        return Response(
+                            {"detail": f"Insufficient wallet balance. Available: {wallet.balance}"},
+                            status=status.HTTP_400_BAD_REQUEST
+                        )
+                        
+                    # Deduct from wallet
+                    balance_before = wallet.balance
+                    wallet.balance -= wallet_amount
+                    wallet.save(update_fields=['balance', 'updated_at'])
+                    
+                    # Log wallet transaction
+                    WalletTransaction.objects.create(
+                        wallet=wallet,
+                        amount=-wallet_amount,
+                        reason='PRODUCT_ADDITION',
+                        balance_before=balance_before,
+                        balance_after=wallet.balance,
+                        related_order=order,
+                        notes=f"Additional payment for order {order.tracking_id}"
+                    )
+                    
+                    # Update order wallet_amount_used
+                    order.wallet_amount_used += wallet_amount
+                    order.save(update_fields=['wallet_amount_used', 'updated_at'])
+                    
+                # 2. Process Razorpay verification if any
+                if razorpay_payment_id and razorpay_order_id and razorpay_signature:
+                    import razorpay
+                    from django.conf import settings
+                    from apps.payment.models import PaymentTransaction
+                    
+                    client = razorpay.Client(
+                        auth=(settings.RAZORPAY_KEY_ID, settings.RAZORPAY_KEY_SECRET)
+                    )
+                    
+                    # Verify signature
+                    client.utility.verify_payment_signature({
+                        'razorpay_order_id': razorpay_order_id,
+                        'razorpay_payment_id': razorpay_payment_id,
+                        'razorpay_signature': razorpay_signature
+                    })
+                    
+                    # Save or update PaymentTransaction details
+                    # If OneToOne already exists, update it, otherwise create
+                    pt, created = PaymentTransaction.objects.get_or_create(
+                        order=order,
+                        defaults={
+                            'razorpay_order_id': razorpay_order_id,
+                            'razorpay_payment_id': razorpay_payment_id,
+                            'razorpay_signature': razorpay_signature,
+                            'amount': order.total - order.wallet_amount_used,
+                            'status': 'COMPLETED'
+                        }
+                    )
+                    if not created:
+                        pt.razorpay_payment_id = razorpay_payment_id
+                        pt.razorpay_signature = razorpay_signature
+                        pt.status = 'COMPLETED'
+                        pt.save()
+                        
+                # 3. Mark payment status as completed
+                order.payment_status = 'COMPLETED'
+                order.save(update_fields=['payment_status', 'updated_at'])
+                
+            return Response({
+                "success": True,
+                "message": "Modification payment confirmed successfully",
+                "new_wallet_amount_used": float(order.wallet_amount_used),
+                "payment_status": order.payment_status
+            }, status=status.HTTP_200_OK)
+            
+        except razorpay.errors.SignatureVerificationError:
+            return Response(
+                {"detail": "Invalid payment signature"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        except Exception as e:
+            return Response(
+                {"detail": f"Failed to confirm payment: {str(e)}"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )

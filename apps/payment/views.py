@@ -26,6 +26,35 @@ class RazorpayInitializeView(APIView):
     
     def post(self, request):
         items_data = request.data.get('items', [])
+        is_additional_payment = request.data.get('is_additional_payment', False)
+        
+        if is_additional_payment:
+            amount = request.data.get('amount')
+            order_id = request.data.get('order_id')
+            if not amount:
+                return Response(
+                    {'error': 'amount is required for additional payments'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            try:
+                total_amount = int(float(amount) * 100) # in paise
+                razorpay_order = client.order.create({
+                    'amount': total_amount,
+                    'currency': 'INR',
+                    'payment_capture': 1,
+                })
+                
+                return Response({
+                    'orderId': razorpay_order['id'],
+                    'key': settings.RAZORPAY_KEY_ID,
+                    'amount': total_amount,
+                    'currency': 'INR',
+                })
+            except Exception as e:
+                return Response(
+                    {'error': f'Failed to initialize payment: {str(e)}'},
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                )
         
         if not items_data:
             return Response(
@@ -70,6 +99,7 @@ class RazorpayInitializeView(APIView):
                 {'error': f'Failed to initialize payment: {str(e)}'},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
+
 
 
 class RazorpayVerifyView(APIView):

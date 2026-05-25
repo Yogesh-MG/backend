@@ -83,10 +83,11 @@ class LLMRouter:
                 "max_tokens": self.llm_max_tokens,
             }
             
-            # Control Kimi Deep Think (thinking mode)
-            if is_kimi_reasoning:
+            # Control Kimi Deep Think (thinking mode) - only include if enabled
+            # Moonshot AI requires this parameter only when deep thinking is requested
+            if is_kimi_reasoning and self.llm_deep_think:
                 payload["thinking"] = {
-                    "type": "enabled" if self.llm_deep_think else "disabled"
+                    "type": "enabled"
                 }
         else:
             # Fallback to local Ollama
