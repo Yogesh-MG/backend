@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import DeliverySlot, DeliveryAddress, ServiceArea
+from .models import DeliverySlot, DeliveryAddress, ServiceArea, CheckoutConfig
 
 
 @admin.register(DeliverySlot)
@@ -25,3 +25,17 @@ class ServiceAreaAdmin(admin.ModelAdmin):
         ('Basic Info', {'fields': ('name', 'is_active')}),
         ('Location', {'fields': ('center_latitude', 'center_longitude', 'radius_km')}),
     )
+
+
+@admin.register(CheckoutConfig)
+class CheckoutConfigAdmin(admin.ModelAdmin):
+    list_display = ['cod_enabled', 'free_delivery_threshold', 'updated_at', 'updated_by']
+    readonly_fields = ['updated_at']
+    
+    def has_add_permission(self, request):
+        # Only allow one instance (singleton pattern)
+        return not CheckoutConfig.objects.exists()
+    
+    def has_delete_permission(self, request, obj=None):
+        # Prevent deletion of the config
+        return False

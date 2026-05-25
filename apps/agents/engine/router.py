@@ -69,11 +69,11 @@ class LLMRouter:
                 "Content-Type": "application/json",
             }
             
-            # Kimi reasoning models (like kimi-k2.5 or kimi-k2.6) strictly require temperature to be 1.0
+            # Kimi reasoning models (like kimi-k2.5 or kimi-k2.6) require specific parameters
             temperature = self.llm_temperature
             is_kimi_reasoning = "kimi-k2.5" in self.llm_model.lower() or "kimi-k2.6" in self.llm_model.lower()
             if is_kimi_reasoning:
-                temperature = 1.0
+                temperature = 1.0 if self.llm_deep_think else 0.6
 
             payload = {
                 "model": self.llm_model,
@@ -83,12 +83,14 @@ class LLMRouter:
                 "max_tokens": self.llm_max_tokens,
             }
             
-            # Control Kimi Deep Think (thinking mode) - only include if enabled
-            # Moonshot AI requires this parameter only when deep thinking is requested
-            if is_kimi_reasoning and self.llm_deep_think:
-                payload["thinking"] = {
-                    "type": "enabled"
-                }
+            # Control Kimi Deep Think (thinking mode) - compatible with official API and vLLM/SGLang
+            if is_kimi_reasoning:
+                payload["top_p"] = 0.95
+                if self.llm_deep_think:
+                    payload["thinking"] = {"type": "enabled"}
+                else:
+                    payload["thinking"] = {"type": "disabled"}
+                    payload["chat_template_kwargs"] = {"thinking": False}
         else:
             # Fallback to local Ollama
             url = self.ollama_url

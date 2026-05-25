@@ -188,6 +188,11 @@ class OrderCreateSerializer(serializers.ModelSerializer):
                     except (ValueError, TypeError):
                         pass
 
+            # Get checkout config for free delivery threshold
+            from apps.delivery.models import CheckoutConfig
+            checkout_config = CheckoutConfig.get_config()
+            free_delivery_threshold = checkout_config.free_delivery_threshold
+            
             if out_of_radius:
                 # Find standard out-of-radius slot to fetch its weight charge
                 oor_slot = DeliverySlot.objects.filter(slot_type='OUT_OF_RADIUS').first()
@@ -203,9 +208,10 @@ class OrderCreateSerializer(serializers.ModelSerializer):
                     slot = DeliverySlot.objects.filter(slot_type=delivery_slot_type).first()
                 
                 if slot:
-                    delivery_fee = slot.delivery_fee
+                    # Apply free delivery if subtotal meets threshold
+                    delivery_fee = slot.delivery_fee if subtotal < free_delivery_threshold else Decimal('0.00')
                 else:
-                    delivery_fee = Decimal('25.00') if subtotal < Decimal('199.00') else Decimal('0.00')
+                    delivery_fee = Decimal('25.00') if subtotal < free_delivery_threshold else Decimal('0.00')
 
 
             # 3. Apply PRIDE discount limit (if user has PRIDE partnership)
@@ -228,8 +234,16 @@ class OrderCreateSerializer(serializers.ModelSerializer):
 
             total = subtotal + delivery_fee - member_discount
 
-            # 4. Handle Wallet Payment Deduction
+            # 4. Validate COD availability based on backend config
             payment_method = validated_data.get('payment_method', 'UPI')
+            
+            # Check if COD is enabled in backend config
+            from apps.delivery.models import CheckoutConfig
+            checkout_config = CheckoutConfig.get_config()
+            
+            if payment_method == 'COD' and not checkout_config.cod_enabled:
+                raise serializers.ValidationError("Cash on Delivery is currently not available. Please choose another payment method.")
+            
             is_paid = is_paid_passed or (payment_method == 'WALLET')
 
             wallet_to_deduct = Decimal('0.00')

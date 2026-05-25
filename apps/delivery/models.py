@@ -1,5 +1,6 @@
 from django.db import models
 from django.conf import settings
+from django.core.validators import MinValueValidator
 import math
 
 class DeliverySlot(models.Model):
@@ -97,3 +98,45 @@ class ServiceArea(models.Model):
 
     class Meta:
         ordering = ['-is_active', 'name']
+
+
+class CheckoutConfig(models.Model):
+    """Global checkout configuration settings."""
+    cod_enabled = models.BooleanField(
+        default=True,
+        help_text="Enable or disable Cash on Delivery payment option"
+    )
+    free_delivery_threshold = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        default=3000.00,
+        validators=[MinValueValidator(0)],
+        help_text="Order subtotal threshold for free delivery (in INR)"
+    )
+    updated_at = models.DateTimeField(auto_now=True)
+    updated_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='checkout_config_updates'
+    )
+
+    def __str__(self):
+        return f"Checkout Config (COD: {'Enabled' if self.cod_enabled else 'Disabled'}, Free Delivery: ₹{self.free_delivery_threshold})"
+
+    class Meta:
+        verbose_name = "Checkout Configuration"
+        verbose_name_plural = "Checkout Configuration"
+
+    @classmethod
+    def get_config(cls):
+        """Get or create the singleton checkout config."""
+        config, created = cls.objects.get_or_create(
+            pk=1,
+            defaults={
+                'cod_enabled': True,
+                'free_delivery_threshold': 3000.00
+            }
+        )
+        return config

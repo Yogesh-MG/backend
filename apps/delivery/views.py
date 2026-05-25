@@ -1,9 +1,9 @@
 from rest_framework.views import APIView
 from rest_framework.response import Response
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework import status
-from .models import DeliverySlot, DeliveryAddress, ServiceArea
-from .serializers import DeliverySlotSerializer, DeliveryAddressSerializer, ServiceAreaSerializer
+from .models import DeliverySlot, DeliveryAddress, ServiceArea, CheckoutConfig
+from .serializers import DeliverySlotSerializer, DeliveryAddressSerializer, ServiceAreaSerializer, CheckoutConfigSerializer
 
 
 class DeliverySlotListView(APIView):
@@ -144,3 +144,47 @@ class ValidateLocationView(APIView):
             'message': 'Delivery not available at this location',
             'service_area': None,
         })
+
+
+class CheckoutConfigView(APIView):
+    """Get checkout configuration settings."""
+    permission_classes = [AllowAny]
+    
+    def get(self, request):
+        """Return checkout configuration including COD status and free delivery threshold."""
+        config = CheckoutConfig.get_config()
+        serializer = CheckoutConfigSerializer(config)
+        return Response(serializer.data)
+
+
+class CheckoutConfigAdminView(APIView):
+    """Admin-only view to update checkout configuration."""
+    permission_classes = [IsAuthenticated]
+    
+    def get(self, request):
+        """Get current checkout configuration."""
+        # Check if user is staff/admin
+        if not request.user.is_staff:
+            return Response(
+                {'error': 'Permission denied. Admin access required.'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        config = CheckoutConfig.get_config()
+        serializer = CheckoutConfigSerializer(config)
+        return Response(serializer.data)
+    
+    def patch(self, request):
+        """Update checkout configuration."""
+        # Check if user is staff/admin
+        if not request.user.is_staff:
+            return Response(
+                {'error': 'Permission denied. Admin access required.'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        config = CheckoutConfig.get_config()
+        serializer = CheckoutConfigSerializer(config, data=request.data, partial=True)
+        if serializer.is_valid():
+            serializer.save(updated_by=request.user)
+            return Response(serializer.data)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)

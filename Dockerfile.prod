@@ -1,0 +1,42 @@
+# Production Dockerfile for Django Backend
+FROM python:3.12-slim
+
+# Set environment variables
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+ENV DEBUG=0
+
+# Set work directory
+WORKDIR /app
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    libpq-dev \
+    --no-install-recommends && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
+
+# Install Python dependencies
+COPY requirements.txt /app/
+RUN pip install --upgrade pip && \
+    pip install --no-cache-dir -r requirements.txt
+
+# Copy project
+COPY . /app/
+
+# Collect static files
+RUN python manage.py collectstatic --noinput
+
+# Run migrations (optional - can be done via separate command)
+# RUN python manage.py migrate
+
+# Create non-root user
+RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app
+USER appuser
+
+# Expose port
+EXPOSE 8000
+
+# Run with gunicorn
+CMD ["gunicorn", "freshon_os.wsgi:application", "--bind", "0.0.0.0:8000", "--workers", "4", "--threads", "2", "--worker-class", "gthread", "--access-logfile", "-", "--error-logfile", "-"]
