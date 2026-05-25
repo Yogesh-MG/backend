@@ -98,9 +98,17 @@ class OrderModificationService:
         # remaining = what still needs to be paid
         remaining_unpaid = item_total - actual_debit
         
+        # DEBUG: Log the values for troubleshooting
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.info(f"[OrderMod] add_item: order={order.tracking_id}, item_total={item_total}, "
+                    f"actual_debit={actual_debit}, remaining_unpaid={remaining_unpaid}, "
+                    f"payment_status={order.payment_status}, wallet_used={order.wallet_amount_used}")
+        
         if order.payment_status == 'COMPLETED' and remaining_unpaid > Decimal('0.05'):
             additional_payment_required = True
             additional_payment_amount = remaining_unpaid
+            logger.info(f"[OrderMod] add_item: ADDITIONAL PAYMENT REQUIRED: {additional_payment_amount}")
         
         return {
             "order_item_id": order_item.id,
@@ -262,9 +270,17 @@ class OrderModificationService:
             # actual_debit = what was taken from wallet (could be 0 if wallet empty)
             remaining_unpaid = diff_total - actual_debit
             
+            # DEBUG: Log the values for troubleshooting
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.info(f"[OrderMod] update_qty: order={order.tracking_id}, diff_total={diff_total}, "
+                        f"actual_debit={actual_debit}, remaining_unpaid={remaining_unpaid}, "
+                        f"payment_status={order.payment_status}, wallet_used={order.wallet_amount_used}")
+            
             if remaining_unpaid > Decimal('0.05'):
                 additional_payment_required = True
                 additional_payment_amount = remaining_unpaid
+                logger.info(f"[OrderMod] update_qty: ADDITIONAL PAYMENT REQUIRED: {additional_payment_amount}")
 
         return {
             "order_item_id": order_item.id,
