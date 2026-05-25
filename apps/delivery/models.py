@@ -8,6 +8,7 @@ class DeliverySlot(models.Model):
         ('EXPRESS', 'Express'),
         ('SAME_DAY', 'Same Day'),
         ('NEXT_DAY', 'Next Day'),
+        ('OUT_OF_RADIUS', '2-4 Days Delivery'),
     ]
 
     id = models.CharField(max_length=50, primary_key=True)
@@ -15,6 +16,7 @@ class DeliverySlot(models.Model):
     description = models.CharField(max_length=200)
     slot_type = models.CharField(max_length=20, choices=SLOT_TYPES)
     delivery_fee = models.DecimalField(max_digits=5, decimal_places=2, default=0)
+    weight_charge = models.DecimalField(max_digits=5, decimal_places=2, default=0.00, help_text="Delivery charge per kg (applied for weight-based pricing)")
     available = models.BooleanField(default=True)
     start_time = models.TimeField(null=True, blank=True)
     end_time = models.TimeField(null=True, blank=True)
@@ -83,6 +85,15 @@ class ServiceArea(models.Model):
         distance = R * c
 
         return distance <= float(self.radius_km)
+
+    @staticmethod
+    def is_in_any_active_service_area(latitude: float, longitude: float) -> bool:
+        """Check if a coordinate point is in any active service area."""
+        service_areas = ServiceArea.objects.filter(is_active=True)
+        for area in service_areas:
+            if area.contains_point(latitude, longitude):
+                return True
+        return False
 
     class Meta:
         ordering = ['-is_active', 'name']

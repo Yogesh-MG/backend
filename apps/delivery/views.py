@@ -7,12 +7,53 @@ from .serializers import DeliverySlotSerializer, DeliveryAddressSerializer, Serv
 
 
 class DeliverySlotListView(APIView):
-    """Get all available delivery slots."""
+    """Get all available delivery slots based on customer coordinates (radius validation)."""
     
     def get(self, request):
-        slots = DeliverySlot.objects.filter(available=True)
+        latitude = request.query_params.get('latitude')
+        longitude = request.query_params.get('longitude')
+        
+        # Fallback to user's default address coordinates
+        if not latitude or not longitude:
+            if request.user.is_authenticated:
+                default_addr = request.user.delivery_addresses.filter(is_default=True).first()
+                if default_addr and default_addr.latitude and default_addr.longitude:
+                    latitude = default_addr.latitude
+                    longitude = default_addr.longitude
+                    
+        out_of_radius = False
+        if latitude and longitude:
+            try:
+                lat = float(latitude)
+                lng = float(longitude)
+                out_of_radius = not ServiceArea.is_in_any_active_service_area(lat, lng)
+            except (ValueError, TypeError):
+                pass
+                
+        if out_of_radius:
+            # Only return OUT_OF_RADIUS slots
+            slots = DeliverySlot.objects.filter(available=True, slot_type='OUT_OF_RADIUS')
+            # Fallback: if admin hasn't created one, create it
+            if not slots.exists():
+                default_slot, _ = DeliverySlot.objects.get_or_create(
+                    id='2-4-days',
+                    defaults={
+                        'title': '2-4 Days Standard Delivery',
+                        'description': 'Standard delivery for out-of-radius areas',
+                        'slot_type': 'OUT_OF_RADIUS',
+                        'delivery_fee': 50.00,
+                        'weight_charge': 15.00,  # 15 rupees per kg
+                        'available': True
+                    }
+                )
+                slots = DeliverySlot.objects.filter(id=default_slot.id)
+        else:
+            # In radius: exclude OUT_OF_RADIUS slots
+            slots = DeliverySlot.objects.filter(available=True).exclude(slot_type='OUT_OF_RADIUS')
+            
         serializer = DeliverySlotSerializer(slots, many=True)
         return Response(serializer.data)
+
 
 
 class DeliveryAddressListView(APIView):

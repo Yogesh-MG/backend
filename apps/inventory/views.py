@@ -17,6 +17,29 @@ from .serializers import (
 from .filters import InventoryBatchFilter
 from apps.accounts.models import FarmerProfile
 
+def is_request_out_of_radius(request) -> bool:
+    """Helper to check if a request coordinates fall outside all active service areas."""
+    latitude = request.query_params.get('latitude')
+    longitude = request.query_params.get('longitude')
+    
+    # Fallback to default address coordinates
+    if not latitude or not longitude:
+        if request.user.is_authenticated:
+            default_addr = request.user.delivery_addresses.filter(is_default=True).first()
+            if default_addr and default_addr.latitude and default_addr.longitude:
+                latitude = default_addr.latitude
+                longitude = default_addr.longitude
+                
+    if latitude and longitude:
+        try:
+            lat = float(latitude)
+            lng = float(longitude)
+            from apps.delivery.models import ServiceArea
+            return not ServiceArea.is_in_any_active_service_area(lat, lng)
+        except (ValueError, TypeError):
+            pass
+            
+    return False
 
 # ---------------------------------------------------------------------------
 # Pagination
@@ -43,10 +66,12 @@ class CategoryViewSet(viewsets.ReadOnlyModelViewSet):
     pagination_class = StandardPagination
 
     def get_queryset(self):
-        # Annotate subcategory_count for the list serializer
-        return Category.objects.annotate(
+        queryset = Category.objects.annotate(
             subcategory_count=Count('subcategories')
         )
+        if is_request_out_of_radius(self.request):
+            queryset = queryset.exclude(slug='vegetables').exclude(name__iexact='vegetables')
+        return queryset
 
     def get_serializer_class(self):
         if self.action == 'list':
@@ -70,14 +95,20 @@ class CategoryViewSet(viewsets.ReadOnlyModelViewSet):
 # ---------------------------------------------------------------------------
 
 class ProductViewSet(viewsets.ReadOnlyModelViewSet):
-    queryset = Product.objects.select_related(
-        'category', 'subcategory'
-    ).prefetch_related('variants', 'benefits')
+    queryset = Product.objects.all()
     serializer_class = ProductSerializer
     pagination_class = StandardPagination
     filter_backends = [DjangoFilterBackend, filters.SearchFilter]
     filterset_fields = ['category__slug', 'category']
     search_fields = ['name', 'description']
+
+    def get_queryset(self):
+        queryset = Product.objects.select_related(
+            'category', 'subcategory'
+        ).prefetch_related('variants', 'benefits')
+        if is_request_out_of_radius(self.request):
+            queryset = queryset.exclude(category__slug='vegetables').exclude(category__name__iexact='vegetables')
+        return queryset
 
 
 # ---------------------------------------------------------------------------
@@ -90,15 +121,22 @@ class InventoryBatchViewSet(viewsets.ReadOnlyModelViewSet):
     Shows available batches of products from different farmers.
     Paginated to avoid large payloads.
     """
-    queryset = InventoryBatch.objects.filter(stock_level__gt=0).select_related(
-        'variant', 'variant__product', 'variant__product__category',
-        'variant__product__subcategory', 'farmer', 'farmer__user'
-    ).prefetch_related('variant__product__benefits')
+    queryset = InventoryBatch.objects.all()
     serializer_class = InventoryBatchSerializer
     pagination_class = StandardPagination
     filter_backends = [DjangoFilterBackend, filters.SearchFilter]
     filterset_class = InventoryBatchFilter
     search_fields = ['variant__product__name', 'farmer__user__username']
+
+    def get_queryset(self):
+        queryset = InventoryBatch.objects.filter(stock_level__gt=0).select_related(
+            'variant', 'variant__product', 'variant__product__category',
+            'variant__product__subcategory', 'farmer', 'farmer__user'
+        ).prefetch_related('variant__product__benefits')
+        if is_request_out_of_radius(self.request):
+            queryset = queryset.exclude(variant__product__category__slug='vegetables').exclude(variant__product__category__name__iexact='vegetables')
+        return queryset
+
 
 
 # ---------------------------------------------------------------------------

@@ -3,6 +3,39 @@ from rest_framework import serializers
 from django.db import transaction
 from apps.inventory.models import InventoryBatch
 from .models import Order, OrderItem
+import re
+
+def parse_weight_in_kg(unit_str: str) -> float:
+    """Robust weight parser converting units like 500 g, 1.5 kg, 1 dozen into kg weights."""
+    if not unit_str:
+        return 1.0
+        
+    unit_str = unit_str.lower().strip()
+    
+    # Match standard packaging formats
+    match = re.search(r'([\d\.]+)\s*(kg|g|gm|gram|grams|dozen|pcs|pc|unit|units)', unit_str)
+    if match:
+        val = float(match.group(1))
+        unit = match.group(2)
+        
+        if unit in ['kg']:
+            return val
+        elif unit in ['g', 'gm', 'gram', 'grams']:
+            return val / 1000.0
+        elif unit in ['dozen']:
+            return val * 1.2  # assume 1 dozen of fruits/eggs weights ~1.2 kg
+        elif unit in ['pcs', 'pc', 'unit', 'units']:
+            return val * 0.5  # assume 1 item weights ~0.5 kg
+            
+    match_digits = re.search(r'([\d\.]+)', unit_str)
+    if match_digits:
+        val = float(match_digits.group(1))
+        if 'g' in unit_str or 'gm' in unit_str:
+            return val / 1000.0
+        return val
+        
+    return 1.0
+
 
 def get_organic_impact_data(order, user):
     """Get organic impact data, using prefetched cache when available to avoid N+1 queries."""
@@ -109,8 +142,62 @@ class OrderCreateSerializer(serializers.ModelSerializer):
                     'unit': batch.variant.unit
                 })
 
-            # 2. Get Delivery Fee from actual slot config (or simple logic for now)
-            delivery_fee = Decimal('25.00') if subtotal < Decimal('199.00') else Decimal('0.00')
+            # 2. Get Delivery Fee from actual slot config (or weight-based charge if out of radius)
+            total_weight = 0.0
+            for item in order_items_to_create:
+                weight_per_unit = parse_weight_in_kg(item['unit'])
+                total_weight += weight_per_unit * float(item['quantity'])
+
+            from apps.delivery.models import DeliverySlot, ServiceArea
+            
+            # Retrieve request coordinates
+            request = self.context.get('request')
+            latitude = None
+            longitude = None
+            if request:
+                latitude = request.data.get('latitude')
+                longitude = request.data.get('longitude')
+                
+            out_of_radius = False
+            
+            # Check coordinates
+            if latitude and longitude:
+                try:
+                    lat = float(latitude)
+                    lng = float(longitude)
+                    out_of_radius = not ServiceArea.is_in_any_active_service_area(lat, lng)
+                except (ValueError, TypeError):
+                    pass
+            # Fallback to default user address
+            if not latitude or not longitude:
+                default_addr = user.delivery_addresses.filter(is_default=True).first()
+                if default_addr and default_addr.latitude and default_addr.longitude:
+                    try:
+                        lat = float(default_addr.latitude)
+                        lng = float(default_addr.longitude)
+                        out_of_radius = not ServiceArea.is_in_any_active_service_area(lat, lng)
+                    except (ValueError, TypeError):
+                        pass
+
+            if out_of_radius:
+                # Find standard out-of-radius slot to fetch its weight charge
+                oor_slot = DeliverySlot.objects.filter(slot_type='OUT_OF_RADIUS').first()
+                weight_charge = Decimal('10.00')  # fallback rate per kg
+                if oor_slot and oor_slot.weight_charge > 0:
+                    weight_charge = oor_slot.weight_charge
+                
+                delivery_fee = (Decimal(str(total_weight)) * weight_charge).quantize(Decimal('0.01'))
+            else:
+                # Standard slot delivery charges
+                slot = DeliverySlot.objects.filter(id__iexact=delivery_slot_type).first()
+                if not slot:
+                    slot = DeliverySlot.objects.filter(slot_type=delivery_slot_type).first()
+                
+                if slot:
+                    delivery_fee = slot.delivery_fee
+                else:
+                    delivery_fee = Decimal('25.00') if subtotal < Decimal('199.00') else Decimal('0.00')
+
 
             # 3. Apply PRIDE discount limit (if user has PRIDE partnership)
             from apps.wallet.models import Wallet
@@ -236,10 +323,29 @@ class OrderCreateSerializer(serializers.ModelSerializer):
 class OrderDetailSerializer(serializers.ModelSerializer):
     items = serializers.SerializerMethodField()
     organic_impact = serializers.SerializerMethodField(read_only=True)
+    amount_due = serializers.SerializerMethodField()
+    additional_payment_required = serializers.SerializerMethodField()
 
     class Meta:
         model = Order
         fields = '__all__'
+
+    def get_amount_due(self, obj):
+        total_paid = Decimal('0')
+        total_paid += obj.wallet_amount_used
+        try:
+            pt = obj.payment_transaction
+            if pt.status == 'COMPLETED':
+                total_paid += pt.amount
+        except Exception:
+            pass
+        return float(max(Decimal('0'), obj.total - total_paid))
+
+    def get_additional_payment_required(self, obj):
+        # Additional payment is required if the order is completed/confirmed but has outstanding balance due to modifications
+        if obj.payment_status == 'COMPLETED' and obj.status not in ['CANCELLED', 'DELIVERED']:
+            return self.get_amount_due(obj) > 0.05
+        return False
 
     def get_organic_impact(self, obj):
         user = self.context['request'].user if 'request' in self.context else obj.user

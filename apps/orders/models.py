@@ -35,7 +35,9 @@ class Order(models.Model):
         ('EXPRESS', 'Express (12 min)'),
         ('SAME_DAY', 'Same Day'),
         ('NEXT_DAY', 'Next Day'),
+        ('OUT_OF_RADIUS', '2-4 Days Delivery'),
     ]
+
 
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='orders')
     tracking_id = models.CharField(max_length=20, unique=True, editable=False)
