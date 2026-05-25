@@ -76,38 +76,31 @@ class OrderModificationService:
         
         # Create wallet transaction if wallet was used in payment
         wallet_transaction = None
+        actual_debit = Decimal('0')
         if order.wallet_amount_used > 0 and order.payment_status == 'COMPLETED':
-            wallet_transaction = OrderModificationService._create_wallet_transaction(
+            wallet_transaction, actual_debit = OrderModificationService._create_wallet_transaction(
                 order=order,
                 amount=item_total,
                 reason='PRODUCT_ADDITION',
                 notes=f"Product added to order {order.tracking_id}: {order_item.product_name}"
             )
-            # Sync wallet_amount_used on the order
-            order.wallet_amount_used += item_total
+            # Sync wallet_amount_used on the order - only add what was actually debited
+            order.wallet_amount_used += actual_debit
             order.save(update_fields=['wallet_amount_used', 'updated_at'])
         
         # Determine if additional payment is required
         additional_payment_required = False
         additional_payment_amount = Decimal('0')
         
-        # If order was paid via non-wallet method and new total exceeds original paid amount
-        if order.payment_status == 'COMPLETED' and order.wallet_amount_used == 0:
-            # Calculate the original paid amount (before adding this item)
-            original_paid = order.total - item_total
-            if order.total > original_paid:
-                additional_payment_required = True
-                additional_payment_amount = item_total
+        # Calculate the remaining unpaid amount for this addition
+        # item_total = what the new items cost
+        # actual_debit = what was taken from wallet (could be 0 if wallet empty)
+        # remaining = what still needs to be paid
+        remaining_unpaid = item_total - actual_debit
         
-        # If wallet was used but doesn't have enough balance for the addition
-        if wallet_transaction and order.wallet_amount_used > 0:
-            try:
-                wallet = Wallet.objects.get(user=order.user)
-                if wallet.balance < 0:
-                    additional_payment_required = True
-                    additional_payment_amount = abs(wallet.balance)
-            except Wallet.DoesNotExist:
-                pass
+        if order.payment_status == 'COMPLETED' and remaining_unpaid > Decimal('0.05'):
+            additional_payment_required = True
+            additional_payment_amount = remaining_unpaid
         
         return {
             "order_item_id": order_item.id,
@@ -118,7 +111,7 @@ class OrderModificationService:
             "new_order_total": float(order.total),
             "wallet_transaction": {
                 "id": wallet_transaction.id if wallet_transaction else None,
-                "amount": float(item_total) if wallet_transaction else 0,
+                "amount": float(actual_debit) if wallet_transaction else 0,
             } if wallet_transaction else None,
             "payment": {
                 "additional_payment_required": additional_payment_required,
@@ -235,17 +228,18 @@ class OrderModificationService:
         
         # Handle wallet transaction/refund if payment was made
         wallet_transaction = None
+        actual_debit = Decimal('0')
         if order.wallet_amount_used > 0 and order.payment_status == 'COMPLETED':
             if diff > 0:
-                # Debit
-                wallet_transaction = OrderModificationService._create_wallet_transaction(
+                # Debit - only debit what wallet can afford
+                wallet_transaction, actual_debit = OrderModificationService._create_wallet_transaction(
                     order=order,
                     amount=diff_total,
                     reason='PRODUCT_UPDATE',
                     notes=f"Quantity increased for {order_item.product_name} in order {order.tracking_id}"
                 )
-                # Sync wallet_amount_used on the order
-                order.wallet_amount_used += diff_total
+                # Sync wallet_amount_used on the order - only add what was actually debited
+                order.wallet_amount_used += actual_debit
                 order.save(update_fields=['wallet_amount_used', 'updated_at'])
             else:
                 # Refund
@@ -263,19 +257,14 @@ class OrderModificationService:
         additional_payment_required = False
         additional_payment_amount = Decimal('0')
         if diff > 0 and order.payment_status == 'COMPLETED':
-            # Check total paid amount
-            total_paid = order.wallet_amount_used
-            try:
-                from apps.payment.models import PaymentTransaction
-                pt = PaymentTransaction.objects.filter(order=order, status='COMPLETED').first()
-                if pt:
-                    total_paid += pt.amount
-            except Exception:
-                pass
-            due = order.total - total_paid
-            if due > Decimal('0.05'):
+            # Calculate remaining unpaid amount for this quantity increase
+            # diff_total = cost of quantity increase
+            # actual_debit = what was taken from wallet (could be 0 if wallet empty)
+            remaining_unpaid = diff_total - actual_debit
+            
+            if remaining_unpaid > Decimal('0.05'):
                 additional_payment_required = True
-                additional_payment_amount = due
+                additional_payment_amount = remaining_unpaid
 
         return {
             "order_item_id": order_item.id,
@@ -287,7 +276,7 @@ class OrderModificationService:
             "new_order_total": float(order.total),
             "wallet_adjustment": {
                 "id": wallet_transaction.id if wallet_transaction else None,
-                "amount": float(abs(diff_total)) if wallet_transaction else 0,
+                "amount": float(abs(diff_total) if diff < 0 else actual_debit) if wallet_transaction else 0,
                 "type": "REFUND" if diff < 0 else "DEBIT"
             } if wallet_transaction else None,
             "payment": {
@@ -299,22 +288,30 @@ class OrderModificationService:
         }
     
     @staticmethod
-    def _create_wallet_transaction(order: Order, amount: Decimal, reason: str, notes: str) -> WalletTransaction:
-        """Create a wallet debit transaction when product is added."""
+    def _create_wallet_transaction(order: Order, amount: Decimal, reason: str, notes: str) -> tuple[WalletTransaction | None, Decimal]:
+        """Create a wallet debit transaction for the maximum possible amount up to the wallet's balance.
+        
+        Returns:
+            tuple: (WalletTransaction or None, actual_debit_amount)
+        """
         try:
             wallet = Wallet.objects.get(user=order.user)
         except Wallet.DoesNotExist:
             # Create wallet if not exists
             wallet = Wallet.objects.create(user=order.user)
         
-        # Debit from wallet
+        # Calculate actual amount we can debit from available balance
+        actual_debit = min(wallet.balance, amount)
+        if actual_debit <= 0:
+            return None, Decimal('0.00')
+            
         balance_before = wallet.balance
-        wallet.balance = max(Decimal('0'), wallet.balance - amount)
+        wallet.balance -= actual_debit
         wallet.save(update_fields=['balance', 'updated_at'])
         
         transaction = WalletTransaction.objects.create(
             wallet=wallet,
-            amount=-amount,  # Negative = debit
+            amount=-actual_debit,  # Negative = debit
             reason=reason,
             balance_before=balance_before,
             balance_after=wallet.balance,
@@ -322,7 +319,7 @@ class OrderModificationService:
             notes=notes
         )
         
-        return transaction
+        return transaction, actual_debit
     
     @staticmethod
     @db_transaction.atomic
