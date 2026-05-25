@@ -63,7 +63,7 @@ class FosDashboardKpiView(APIView):
 
     def get(self, request):
         from apps.pos.models import SupportTicket
-        from apps.delivery.models import DeliveryAssignment
+        from apps.delivery_partner.models import DeliveryAssignment
         
         today_start, today_end = get_today_range()
         yesterday_start, yesterday_end = get_yesterday_range()
@@ -157,7 +157,7 @@ class FosDashboardKpiView(APIView):
     
     def _calculate_delayed_orders(self) -> int:
         """AI-powered calculation of delayed orders based on delivery SLAs."""
-        from apps.delivery.models import DeliveryAssignment
+        from apps.delivery_partner.models import DeliveryAssignment
         
         now = timezone.now()
         delayed_count = 0
