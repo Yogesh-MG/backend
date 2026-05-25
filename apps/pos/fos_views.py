@@ -1332,34 +1332,54 @@ class FosAgentQueryView(APIView):
                 }, user=request.user)
                 response_data['data']['comparison'] = compare_result
             
-            # Generate insights based on data
-            insights = []
-            
-            if 'sales' in response_data['data']:
-                sales = response_data['data']['sales']
-                if sales.get('success'):
-                    summary = sales['data'].get('summary', {})
-                    insights.append(f"📈 Total revenue: {summary.get('total_revenue', 'N/A')}")
-                    insights.append(f"🛒 Total orders: {summary.get('total_orders', 'N/A')}")
-            
-            if 'inventory' in response_data['data']:
-                inv = response_data['data']['inventory']
-                if inv.get('success'):
-                    summary = inv.get('summary', {})
-                    if summary.get('low_stock', 0) > 0:
-                        insights.append(f"⚠️ {summary['low_stock']} products with low stock")
-                    if summary.get('out_of_stock', 0) > 0:
-                        insights.append(f"🚨 {summary['out_of_stock']} products out of stock")
-            
-            if 'anomalies' in response_data['data']:
-                anom = response_data['data']['anomalies']
-                if anom.get('success'):
-                    anomalies = anom.get('anomalies', [])
-                    if len(anomalies) > 0 and 'No anomalies' not in str(anomalies[0]):
-                        insights.append(f"🔍 {len(anomalies)} anomalies detected requiring attention")
-            
-            response_data['insights'] = insights
-            response_data['text'] = self._generate_response_text(message, response_data)
+            # If no operational tools were triggered, fallback to a natural LLM conversation response
+            is_generic_query = not response_data['steps']
+            if is_generic_query:
+                from apps.agents.engine.router import get_router
+                
+                router = get_router()
+                system_prompt = (
+                    "You are the Founder BI Agent for FreshOn.in. You have access to all business data "
+                    "(sales, inventory, customers, deliveries, finance, support tickets). "
+                    "When greeting the user or answering general questions, be professional, helpful, "
+                    "and explain what data you can analyze. Keep your response brief, clear, and action-oriented."
+                )
+                
+                response_data['steps'].append('Querying LLM for conversational reply...')
+                ai_reply = router.chat([
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": message}
+                ])
+                response_data['text'] = ai_reply
+            else:
+                # Generate insights based on data
+                insights = []
+                
+                if 'sales' in response_data['data']:
+                    sales = response_data['data']['sales']
+                    if sales.get('success'):
+                        summary = sales['data'].get('summary', {})
+                        insights.append(f"📈 Total revenue: {summary.get('total_revenue', 'N/A')}")
+                        insights.append(f"🛒 Total orders: {summary.get('total_orders', 'N/A')}")
+                
+                if 'inventory' in response_data['data']:
+                    inv = response_data['data']['inventory']
+                    if inv.get('success'):
+                        summary = inv.get('summary', {})
+                        if summary.get('low_stock', 0) > 0:
+                            insights.append(f"⚠️ {summary['low_stock']} products with low stock")
+                        if summary.get('out_of_stock', 0) > 0:
+                            insights.append(f"🚨 {summary['out_of_stock']} products out of stock")
+                
+                if 'anomalies' in response_data['data']:
+                    anom = response_data['data']['anomalies']
+                    if anom.get('success'):
+                        anomalies = anom.get('anomalies', [])
+                        if len(anomalies) > 0 and 'No anomalies' not in str(anomalies[0]):
+                            insights.append(f"🔍 {len(anomalies)} anomalies detected requiring attention")
+                
+                response_data['insights'] = insights
+                response_data['text'] = self._generate_response_text(message, response_data)
             
         except Exception as e:
             logger.error(f"[FosAgentQuery] Error processing query: {e}")
