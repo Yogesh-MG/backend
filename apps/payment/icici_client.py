@@ -51,7 +51,7 @@ os.environ.setdefault('WITH_RESPONSE_MODELS', 'false')
 
 # Try to import SDK components
 try:
-    from httpcore.AppConstants import load_dotenv_from_path
+    from eazypay_httpcore.AppConstants import load_dotenv_from_path
     from eazypay.api import qr3, transaction_status
     from eazypay.model.request.QR3RequestDTO import QR3RequestDTO
     from eazypay.model.request.TransactionStatusRequestDTO import TransactionStatusRequestDTO

@@ -6,10 +6,8 @@ authors = ["Venu Mallik <vbellamkonda@innominds.com>"]
 readme = "README.md"
 
 packages = [
-    { include = "src/corporate/*",  to = "corporate" },
-    { include = "src/composite/*",  to = "composite" },
     { include = "src/eazypay/*",  to = "eazypay" },
-    { include = "src/httpcore/*",  to = "httpcore" },
+    { include = "src/eazypay_httpcore/*",  to = "eazypay_httpcore" },
 ]
 
 [tool.poetry.dependencies]
@@ -25,5 +23,5 @@ pip = "^25.0.1"
 
 
 [build-system]
-requires = ["setuptools>=75.8.0", "wheel"]
-build-backend = "setuptools.build_meta" 
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api" 

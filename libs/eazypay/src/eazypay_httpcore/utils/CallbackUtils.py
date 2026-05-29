@@ -1,5 +1,5 @@
-from httpcore.http.EncryptionDecryptionInterceptor import EncryptionDecryptionInterceptor
-from httpcore.utils.log import logger
+from eazypay_httpcore.http.EncryptionDecryptionInterceptor import EncryptionDecryptionInterceptor
+from eazypay_httpcore.utils.log import logger
 
 interceptor = EncryptionDecryptionInterceptor()
 

@@ -2,7 +2,7 @@ import logging
 import os
 from logging.handlers import TimedRotatingFileHandler
 from dotenv import load_dotenv
-from httpcore.AppConstants import AppConstants
+from eazypay_httpcore.AppConstants import AppConstants
 
 def setup_logging(log_level_str):
     """Sets up logging with rotation.

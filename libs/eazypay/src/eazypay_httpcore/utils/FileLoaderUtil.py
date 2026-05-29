@@ -2,7 +2,7 @@
 from typing import Any
 from pydantic import BaseModel
 import json
-from httpcore.utils.log import logger
+from eazypay_httpcore.utils.log import logger
 
 class FileLoaderUtil(BaseModel):
 

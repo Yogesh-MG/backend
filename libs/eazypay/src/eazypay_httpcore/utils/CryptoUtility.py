@@ -7,11 +7,11 @@ import hashlib
 from typing import Optional
 from base64 import b64encode, b64decode
 
-from httpcore.utils.FileLoaderUtil import FileLoaderUtil
-from httpcore.utils.SingletonManager import Singleton
-from httpcore.utils.log import logger
-from httpcore.AppConstants import AppConstants
-from httpcore.http.SdkHttpException import SDKClientException
+from eazypay_httpcore.utils.FileLoaderUtil import FileLoaderUtil
+from eazypay_httpcore.utils.SingletonManager import Singleton
+from eazypay_httpcore.utils.log import logger
+from eazypay_httpcore.AppConstants import AppConstants
+from eazypay_httpcore.http.SdkHttpException import SDKClientException
 
 
 # cryptography

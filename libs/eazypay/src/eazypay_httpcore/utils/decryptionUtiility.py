@@ -1,9 +1,9 @@
 from cryptography.hazmat.primitives.serialization import pkcs12,  pkcs7
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.backends import default_backend
-from httpcore.utils.CryptoUtility import CryptoUtility
-from httpcore.AppConstants import AppConstants
-from httpcore.utils.log import logger
+from eazypay_httpcore.utils.CryptoUtility import CryptoUtility
+from eazypay_httpcore.AppConstants import AppConstants
+from eazypay_httpcore.utils.log import logger
 import os
 
 

@@ -1,6 +1,6 @@
 from .model import *
-from httpcore.http.CoreHttpClient import CoreHttpClient
-from httpcore.AppConstants import AppConstants
+from eazypay_httpcore.http.CoreHttpClient import CoreHttpClient
+from eazypay_httpcore.AppConstants import AppConstants
 
 with_dto = AppConstants.WITH_RESPONSE_MODELS
 
