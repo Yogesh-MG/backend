@@ -1,0 +1,829 @@
+{
+  "baseUrl": "https://apibankingonesandbox.icici.bank.in/api",
+  "modules": [
+    {
+      "isSubscribed": false,
+      "name": "corporate",
+      "description": "CIB Product API Configuration",
+      "headers": {
+        "Content-Type": "application/json",
+        "X-SDK-Originated": "true",
+        "X-SDK-VERSION": "1.1.0"
+      },
+      "apis": [
+        {
+          "apiId": "1001",
+          "apiName": "Mobile Fetch",
+          "endpoint": "/MobileFetch",
+          "basePath": "/Corporate/CIB/v1",
+          "method": "POST",
+          "requestDtoType": "corporate.model.request.MobileFetchDTO",
+          "responseDtoType": "corporate.model.response.CIBMobileFetchResponseDTO",
+          "function" : "mobile_fetch"
+        },
+
+        {
+          "apiId": "1002",
+          "apiName": "Create OTP",
+          "endpoint": "/Create",
+          "method": "POST",
+          "basePath": "/Corporate/CIB/v1",
+          "requestDtoType": "corporate.model.request.OtpCreateDTO",
+          "responseDtoType": "corporate.model.response.CIBCreateResponseDTO",
+          "function" : "create_otp"
+        },
+        {
+          "apiId": "1003",
+          "apiName": "Merchant Registration",
+          "endpoint": "/Registration",
+          "basePath": "/Corporate/CIB/v1",
+          "method": "POST",
+          "requestDtoType": "corporate.model.request.UserRegistrationDTO",
+          "responseDtoType": "corporate.model.response.CIBRegistrationResponseDTO",
+          "function" : "merchant_registration"
+        },
+        {
+          "apiId": "1004",
+          "apiName": "RegistrationStatus",
+          "basePath": "/Corporate/CIB/v1",
+          "endpoint": "/RegistrationStatus",
+          "method": "POST",
+          "requestDtoType": "corporate.model.request.RegistrationStatusDTO",
+          "responseDtoType": "corporate.model.response.CIBRegistrationStatusResponseDTO",
+          "function" : "registration_status"
+        },
+        {
+          "apiId": "1005",
+          "apiName": "BeneAddition",
+          "basePath": "/Corporate/CIB/v1",
+          "endpoint": "/BeneAddition",
+          "method": "POST",
+          "requestDtoType": "corporate.model.request.BeneficiaryAdditionDTO",
+          "responseDtoType": "corporate.model.response.CIBBeneAdditionResponseDTO",
+          "function" : "bene_addition"
+        },
+        {
+          "apiId": "1006",
+          "apiName": "BeneValidation",
+          "basePath": "/Corporate/CIB/v1",
+          "endpoint": "/BeneValidation",
+          "method": "POST",
+          "requestDtoType": "corporate.model.request.BeneficiaryValidationDTO",
+          "responseDtoType": "corporate.model.response.CIBBeneValidationResponseDTO",
+          "function" : "bene_validation"
+        },
+        {
+          "apiId": "1007",
+          "apiName": "VPA BeneAddition",
+          "basePath": "/Corporate/CIB/VPA/v1/",
+          "endpoint": "/BeneAddition",
+          "method": "POST",
+          "requestDtoType": "corporate.model.request.BeneficiaryAdditionVPADTO",
+          "responseDtoType": "corporate.model.response.CIBBeneAdditionResponseDTO",
+          "function" : "vpa_bene_addition"
+        },
+        {
+          "apiId": "1008",
+          "apiName": "beneRegistration",
+          "basePath": "/v1/CIB",
+          "endpoint": "/beneRegistration",
+          "method": "POST",
+          "requestDtoType": "corporate.model.request.BeneRegistrationDTO",
+          "responseDtoType": "corporate.model.response.CIBBeneRegResDTO",
+          "function" : "bene_registration"
+        },
+        {
+
+          "apiId": "1009",
+          "apiName": "BalanceInquiry",
+          "basePath": "/Corporate/CIB/v1",
+          "endpoint": "/BalanceInquiry",
+          "method": "POST",
+          "requestDtoType": "corporate.model.request.BalanceInquiryDTO",
+          "responseDtoType": "corporate.model.response.CIBBalanceInquiryResponseDTO",
+          "function" : "balance_inquiry"
+        },
+        {
+          "apiId": "1010",
+          "apiName": "ValidateLinkedAccount",
+          "basePath": "/Corporate/CIB/v1",
+          "endpoint": "/ValidateLinkedAccount",
+          "method": "POST",
+          "requestDtoType": "corporate.model.request.ValidateLinkedAccountDTO",
+          "responseDtoType": "corporate.model.response.CIBValidateLinkedAccountResponseDTO",
+          "function" : "validate_linked_account"
+        },
+        {
+          "apiId": "1011",
+          "apiName": "TransactionInquiry",
+          "basePath": "/Corporate/CIB/v1",
+          "endpoint": "/TransactionInquiry",
+          "method": "POST",
+          "requestDtoType": "corporate.model.request.TransactionInquiryDTO",
+          "responseDtoType": "corporate.model.response.CIBTransactionInquiryResponseDTO",
+          "function" : "transaction_inquiry"
+        },
+        {
+          "apiId": "1012",
+          "apiName": "Deregistration",
+          "basePath": "/Corporate/CIB/v1",
+          "endpoint": "/Deregistration",
+          "method": "POST",
+          "requestDtoType": "corporate.model.request.DeregistrationDTO",
+          "responseDtoType": "corporate.model.response.CIBDeRegistrationResponseDTO",
+          "function" : ""
+        },
+        {
+          "apiId": "1013",
+          "apiName": "GenerateOTP",
+          "basePath": "/v1/CIB",
+          "endpoint": "/GenerateOTP",
+          "method": "POST",
+          "requestDtoType": "corporate.model.request.GenerateOtpDTO",
+          "responseDtoType": "corporate.model.response.CIBGenerateOTPResponseDTO",
+          "function" : "generate_otp"
+        },
+        {
+          "apiId": "1014",
+          "apiName": "TransactionOTP",
+          "basePath": "/Corporate/CIB/v1",
+          "endpoint": "/TransactionOTP",
+          "method": "POST",
+          "requestDtoType": "corporate.model.request.TransactionOtpDTO",
+          "responseDtoType": "corporate.model.response.CIBTransactionOTPResponseDTO",
+          "function" : "transaction_otp"
+        },
+        {
+          "apiId": "1015",
+          "apiName": "Transaction",
+          "basePath": "/Corporate/CIB/v1",
+          "endpoint": "/Transaction",
+          "method": "POST",
+          "requestDtoType": "corporate.model.request.TransactionDTO",
+          "responseDtoType": "corporate.model.response.CIBTransactionResponseDTO",
+          "function" : ""
+        },
+        {
+          "apiId": "1016",
+          "apiName": "CIBNEFTStatus",
+          "basePath": "/v1",
+          "endpoint": "/CIBNEFTStatus",
+          "method": "POST",
+          "requestDtoType": "corporate.model.request.CorporateNEFTStatusDTO",
+          "responseDtoType": "corporate.model.response.CIBNEFTStatusResponseDTO",
+          "function" : "transaction"
+        },
+        {
+          "apiId": "1017",
+          "apiName": "AccountStatement",
+          "basePath": "/Corporate/CIB/v1",
+          "endpoint": "/AccountStatement",
+          "method": "POST",
+          "requestDtoType": "corporate.model.request.AccountStatementDTO",
+          "responseDtoType": "corporate.model.response.CIBAccountStatementResponseDTO",
+          "function" : "account_statement"
+        },
+        {
+          "apiId": "1018",
+          "apiName": "AccountStatements",
+          "basePath": "/Corporate/CIB/v1",
+          "endpoint": "/AccountStatements",
+          "method": "POST",
+          "requestDtoType": "corporate.model.request.AccountStatementsDTO",
+          "responseDtoType": "corporate.model.response.CIBAccountStatementResponseDTO",
+          "function" : "account_statements"
+        },
+        {
+          "apiId": "1019",
+          "apiName": "VirtualUserCreation",
+          "basePath": "/Corporate/CIB/v1",
+          "endpoint": "/VirtualUserCreation",
+          "method": "POST",
+          "requestDtoType": "corporate.model.request.VirtualUserCreationDTO",
+          "responseDtoType": "corporate.model.response.CIBVirtualUserCreationResponseDTO",
+          "function" : "virtual_user_creation"
+        },
+        {
+          "apiId": "1020",
+          "apiName": "beneTransaction",
+          "basePath": "/v1/CIB",
+          "endpoint": "/beneTransaction",
+          "method": "POST",
+          "requestDtoType": "corporate.model.request.BeneTransactionRequestDTO",
+          "responseDtoType": "corporate.model.response.CIBBeneTransactionResponseDTO",
+          "function" : "bene_transaction"
+        },
+        {
+          "apiId": "1021",
+          "apiName": "ScheduleApiPayment",
+          "basePath": "/v1",
+          "endpoint": "/cib-schedule-payment",
+          "method": "POST",
+          "requestDtoType": "corporate.model.request.ScheduleApiPaymentDTO",
+          "responseDtoType": "corporate.model.response.ScheduleApiPaymentResponseDTO",
+          "function" : "schedule_api_payment"
+        },
+        {
+          "apiId": "1022",
+          "apiName": "FetchBeneList",
+          "basePath": "/v1",
+          "endpoint": "/cib-fetchBeneList",
+          "method": "POST",
+          "requestDtoType": "corporate.model.request.FetchBeneListDTO",
+          "responseDtoType": "corporate.model.response.FetchBeneListResponseDTO",
+          "function" : "fetch_bene_list"
+        }
+      ]
+    },
+    {
+      "isSubscribed": false,
+
+      "name": "eazypay",
+      "description": "Eazypay Product API Configuration",
+      "headers": {
+        "Content-Type": "application/json",
+        "X-SDK-Originated": "true",
+        "X-SDK-VERSION": "1.1.0"
+      },
+      "apis": [
+        {
+          "apiId": "3001",
+          "apiName": "TransactionStatus",
+          "basePath": "/MerchantAPI/UPI2/v1",
+          "endpoint": "/TransactionStatus",
+          "method": "POST",
+          "requestDtoType": "eazypay.model.request.TransactionStatusRequestDTO",
+          "responseDtoType": "eazypay.model.response.TransactionStatusResponseDTO",
+          "function" : "transaction_status"
+        },
+        {
+          "apiId": "3002",
+          "apiName": "CreateMandate",
+          "basePath": "/MerchantAPI/UPI2/v1",
+          "endpoint": "/CreateMandate",
+          "method": "POST",
+          "requestDtoType": "eazypay.model.request.CreateMandateRequestDTO",
+          "responseDtoType": "eazypay.model.response.CreateMandateResponseDTO",
+          "function" : "create_mandate"
+        },
+        {
+          "apiId": "3003",
+          "apiName": "MandateNotification",
+          "basePath": "/MerchantAPI/UPI2/v1",
+          "endpoint": "/MandateNotification",
+          "method": "POST",
+          "requestDtoType": "eazypay.model.request.MandateNotificationRequestDTO",
+          "responseDtoType": "eazypay.model.response.MandateNotificationResponseDTO",
+          "function" : "mandate_notification"
+        },
+        {
+          "apiId": "3004",
+          "apiName": "Transaction Status By criteria",
+          "basePath": "/MerchantAPI/UPI2/v1",
+          "endpoint": "/TransactionStatusByCriteria",
+          "method": "POST",
+          "requestDtoType": "eazypay.model.request.TransactionstatusbycriteriaRequestDTO",
+          "responseDtoType": "eazypay.model.response.TransactionStatusbyCriteriaResponseDTO",
+          "function" : "transaction_status_bycriteria"
+        },
+        {
+          "apiId": "3005",
+          "apiName": "Refund",
+          "basePath": "/MerchantAPI/UPI2/v1",
+          "endpoint": "/Refund",
+          "method": "POST",
+          "requestDtoType": "eazypay.model.request.RefundRequestDTO",
+          "responseDtoType": "eazypay.model.response.RefundStatusResponseDTO",
+          "function" : "refund"
+        },
+        {
+          "apiId": "3006",
+          "apiName": "QR",
+          "basePath": "/MerchantAPI/UPI2/v1",
+          "endpoint": "/QR",
+          "method": "POST",
+          "requestDtoType": "eazypay.model.request.QRRequestDTO",
+          "responseDtoType": "eazypay.model.response.QRResponseDTO",
+          "function" : "qr"
+        },
+        {
+          "apiId": "3007",
+          "apiName": "Collect Pay",
+          "basePath": "/MerchantAPI/UPI2/v1",
+          "endpoint": "/CollectPay",
+          "method": "POST",
+          "requestDtoType": "eazypay.model.request.CollectPayRequestDTO",
+          "responseDtoType": "eazypay.model.response.CollectPayResponseDTO",
+          "function" : "collect_pay"
+        },
+        {
+          "apiId": "3008",
+          "apiName": "ValidateVoucher",
+          "basePath": "/MerchantAPI/UPI2/v1",
+          "endpoint": "/ValidateVoucher",
+          "method": "POST",
+          "requestDtoType": "eazypay.model.request.ValidateVoucherRequestDTO",
+          "responseDtoType": "eazypay.model.response.ValidateVoucherResponseDTO",
+          "function" : "validate_voucher"
+        },
+        {
+          "apiId": "3009",
+          "apiName": "RedeemVoucher",
+          "basePath": "/MerchantAPI/UPI2/v1",
+          "endpoint": "/RedeemVoucher",
+          "method": "POST",
+          "requestDtoType": "eazypay.model.request.RedeemVoucherRequestDTO",
+          "responseDtoType": "eazypay.model.response.RedeemVoucherResponseDTO",
+          "function" : "redeem_voucher"
+        },
+        {
+          "apiId": "3010",
+          "apiName": "ExecuteMandate",
+          "basePath": "/MerchantAPI/UPI2/v1",
+          "endpoint": "/ExecuteMandate",
+          "method": "POST",
+          "requestDtoType": "eazypay.model.request.ExecuteMandateRequestDTO",
+          "responseDtoType": "eazypay.model.response.ExecuteMandateResponseDTO",
+          "function" : "execute_mandate"
+        },
+        {
+          "apiId": "3011",
+          "apiName": "CreateVouchers",
+          "basePath": "/MerchantAPI/UPI2/v1",
+          "endpoint": "/CreateVouchers",
+          "method": "POST",
+          "requestDtoType": "eazypay.model.request.CreateVouchersRequestDTO",
+          "responseDtoType": "eazypay.model.response.CreateVoucherResponseDTO",
+          "function" : "create_vouchers"
+        },
+        {
+          "apiId": "3012",
+          "apiName": "DelayedSettlements",
+          "basePath": "/MerchantAPI/UPI2/v1",
+          "endpoint": "/DelayedSettlements",
+          "method": "POST",
+          "requestDtoType": "eazypay.model.request.DelayedSettlementsRequestDTO",
+          "responseDtoType": "eazypay.model.response.DelayedSettlementResponseDTO",
+          "function" : "delayed_settlements"
+        },
+        {
+          "apiId": "3013",
+          "apiName": "QR1",
+          "basePath": "/MerchantAPI/UPI/v0",
+          "endpoint": "/QR/400899",
+          "method": "POST",
+          "requestDtoType": "eazypay.model.request.QR1RequestDTO",
+          "responseDtoType": "eazypay.model.response.QR123ResponseDTO",
+          "function" : "qr1"
+        },
+        {
+          "apiId": "3014",
+          "apiName": "QR2",
+          "basePath": "/MerchantAPI/UPI/v0",
+          "endpoint": "/QR2/400899",
+          "method": "POST",
+          "requestDtoType": "eazypay.model.request.QR2RequestDTO",
+          "responseDtoType": "eazypay.model.response.QR123ResponseDTO",
+          "function" : "qr2"
+        },
+        {
+          "apiId": "3015",
+          "apiName": "QR3",
+          "basePath": "/MerchantAPI/UPI/v0",
+          "endpoint": "/QR3/400899",
+          "method": "POST",
+          "requestDtoType": "eazypay.model.request.QR3RequestDTO",
+          "responseDtoType": "eazypay.model.response.QR123ResponseDTO",
+          "function" : "qr3"
+        },
+        {
+          "apiId": "3016",
+          "apiName": "CollectPay1",
+          "basePath": "/MerchantAPI/UPI/v0",
+          "endpoint": "/CollectPay1/400899",
+          "method": "POST",
+          "requestDtoType": "eazypay.model.request.CollectPay1RequestDTO",
+          "responseDtoType": "eazypay.model.response.CollectPay123ResponseDTO",
+          "function" : "collect_pay1"
+        },
+        {
+          "apiId": "3017",
+          "apiName": "CollectPay2",
+          "basePath": "/MerchantAPI/UPI/v0",
+          "endpoint": "/CollectPay2/400899",
+          "method": "POST",
+          "requestDtoType": "eazypay.model.request.CollectPay2RequestDTO",
+          "responseDtoType": "eazypay.model.response.CollectPay123ResponseDTO",
+          "function" : "collect_pay2"
+        },
+        {
+          "apiId": "3018",
+          "apiName": "CollectPay3",
+          "basePath": "/MerchantAPI/UPI/v0",
+          "endpoint": "/CollectPay3/400899",
+          "method": "POST",
+          "requestDtoType": "eazypay.model.request.CollectPay3RequestDTO",
+          "responseDtoType": "eazypay.model.response.CollectPay123ResponseDTO",
+          "function" : "collect_pay3"
+        },
+        {
+          "apiId": "3019",
+          "apiName": "TransactionStatus1",
+          "basePath": "/MerchantAPI/UPI/v0",
+          "endpoint": "/TransactionStatus1/400899",
+          "method": "POST",
+          "requestDtoType": "eazypay.model.request.TransactionStatus1RequestDTO",
+          "responseDtoType": "eazypay.model.response.TransactionStatus12ResponseDTO",
+          "function" : "transaction_status1"
+        },
+        {
+          "apiId": "3020",
+          "apiName": "TransactionStatus2",
+          "basePath": "/MerchantAPI/UPI/v0",
+          "endpoint": "/TransactionStatus2/400899",
+          "method": "POST",
+          "requestDtoType": "eazypay.model.request.TransactionStatus2RequestDTO",
+          "responseDtoType": "eazypay.model.response.TransactionStatus12ResponseDTO",
+          "function" : "transaction_status2"
+        },
+        {
+          "apiId": "3021",
+          "apiName": "TransactionStatus3",
+          "basePath": "/MerchantAPI/UPI/v0",
+          "endpoint": "/TransactionStatus3/400899",
+          "method": "POST",
+          "requestDtoType": "eazypay.model.request.TransactionStatus3RequestDTO",
+          "responseDtoType": "eazypay.model.response.TransactionStatus3ResponseDTO",
+          "function" : "transaction_status3"
+        },
+        {
+          "apiId": "3022",
+          "apiName": "Refund1",
+          "basePath": "/MerchantAPI/UPI/v0",
+          "endpoint": "/Refund/400899",
+          "method": "POST",
+          "requestDtoType": "eazypay.model.request.Refund1RequestDTO",
+          "responseDtoType": "eazypay.model.response.RefundAPI12ResponseDTO",
+          "function" : "refund1"
+        },
+        {
+          "apiId": "3023",
+          "apiName": "Refund2",
+          "basePath": "/MerchantAPI/UPI/v0",
+          "endpoint": "/Refund2/400899",
+          "method": "POST",
+          "requestDtoType": "eazypay.model.request.Refund2RequestDTO",
+          "responseDtoType": "eazypay.model.response.RefundAPI12ResponseDTO",
+          "function" : "refund2"
+        },
+        {
+          "apiId": "3024",
+          "apiName": "CallbackStatus1",
+          "basePath": "/MerchantAPI/UPI/v0",
+          "endpoint": "/CallbackStatus/400899",
+          "method": "POST",
+          "requestDtoType": "eazypay.model.request.CallbackStatus1RequestDTO",
+          "responseDtoType": "eazypay.model.response.CallbackStatus1ResponseDTO",
+          "function" : "callback_status1"
+        },
+        {
+          "apiId": "3025",
+          "apiName": "CallbackStatus2",
+          "basePath": "/MerchantAPI/UPI/v0",
+          "endpoint": "/CallbackStatus2/400899",
+          "method": "POST",
+          "requestDtoType": "eazypay.model.request.CallbackStatus2RequestDTO",
+          "responseDtoType": "eazypay.model.response.CallbackStatus2ResponseDTO",
+          "function" : "callback_status2"
+        }
+      ]
+    },
+    {
+      "isSubscribed": false,
+      "name": "composite",
+      "description": "Composite Payments Product API Configuration",
+      "headers": {
+        "Content-Type": "application/json",
+        "X-SDK-Originated": "true",
+        "X-SDK-VERSION": "1.1.0"
+      },
+      "paymentTypes": [
+        {
+          "name": "cib",
+          "isSubscribed": true,
+          "priority": "1000",
+          "partnerId": "IBCKer00055"
+        },
+        {
+          "name": "upi",
+          "isSubscribed": true,
+          "priority": "1000",
+          "partnerId": "IBCKer00055"
+        },
+        {
+          "name": "imps",
+          "isSubscribed": true,
+          "priority": "0100",
+          "partnerId": "IBCKer00055"
+        },
+        {
+          "name": "neft",
+          "isSubscribed": true,
+          "priority": "0010",
+          "partnerId": "IBCKer00055"
+        },
+        {
+          "name": "rtgs",
+          "isSubscribed": true,
+          "priority": "0001",
+          "partnerId": "IBCKer00055"
+        }
+      ],
+      "apis": [
+        {
+          "apiId": "2001",
+          "apiName": "UPI Payment",
+          "basePath": "/v1",
+          "endpoint": "/composite-payment",
+          "method": "POST",
+          "category": "upi",
+          "requestDtoType": "composite.model.request.UPIPaymentRequestDto",
+          "responseDtoType": "composite.model.response.UPIPaymentResponseDto",
+          "function" : "upi_payment"
+        },
+        {
+          "apiId": "2002",
+          "apiName": "UPI Payment With Beneficiary Id",
+          "basePath": "/v2",
+          "endpoint": "/composite-payment",
+          "method": "POST",
+          "category": "upi",
+          "requestDtoType": "composite.model.request.UpiPaymentWithBeneIdRequestDto",
+          "responseDtoType": "composite.model.response.UPIPaymentBnfIdResponseDTO",
+          "function" : "upi_payment_with_beneficiary_id"
+        },
+        {
+          "apiId": "2003",
+          "apiName": "UPI Payment Status Check",
+          "basePath": "/v1",
+          "endpoint": "/composite-status",
+          "method": "POST",
+          "category": "upi",
+          "requestDtoType": "composite.model.request.UPIPayStatusCheckRequestDto",
+          "responseDtoType": "composite.model.response.UpiStatusResponseDto",
+          "function" : "upi_payment_status_check"
+        },
+        {
+          "apiId": "2004",
+          "apiName": "UPI Payment Validation",
+          "basePath": "/v1",
+          "endpoint": "/composite-validation",
+          "method": "POST",
+          "category": "upi",
+          "requestDtoType": "composite.model.request.UPIValidationRequestDto",
+          "responseDtoType": "composite.model.response.UPIValidationResponseDTO",
+          "function" : "upi_payment_validation"
+        },
+        {
+          "apiId": "2005",
+          "apiName": "UPI Recon360 Payment status",
+          "basePath": "/v1",
+          "endpoint": "/composite-status",
+          "method": "POST",
+          "category": "upi",
+          "requestDtoType": "composite.model.request.UPIReconRequestDTO",
+          "responseDtoType": "composite.model.response.UPIReconResponseDto",
+          "function" : "upi_recon360_paymentstatus"
+        },
+        {
+          "apiId": "2006",
+          "apiName": "IMPS Payment",
+          "basePath": "/v1",
+          "endpoint": "/composite-payment",
+          "method": "POST",
+          "category": "imps",
+          "requestDtoType": "composite.model.request.IMPSPaymentRequestDto",
+          "responseDtoType": "composite.model.response.IMPSPaymentResponseDto",
+          "function" : "imps_payment"
+        },
+        {
+          "apiId": "2007",
+          "apiName": "IMPS Payment With beneficiary ID",
+          "basePath": "/v2",
+          "endpoint": "/composite-payment",
+          "method": "POST",
+          "category": "imps",
+          "requestDtoType": "composite.model.request.IMPSPaymentBeneIdRequestDto",
+          "responseDtoType": "composite.model.response.IMPSBnfIdResponseDTO",
+          "function" : "imps_payment_withbeneficiary_id"
+        },
+        {
+          "apiId": "2008",
+          "apiName": "IMPS Status Check",
+          "basePath": "/v1",
+          "endpoint": "/composite-status",
+          "method": "POST",
+          "category": "imps",
+          "requestDtoType": "composite.model.request.ImpsStatusCheckRequestDto",
+          "responseDtoType": "composite.model.response.ImpsResponseDTO",
+          "function" : "imps_status_check"
+        },
+        {
+          "apiId": "2009",
+          "apiName": "IMPS Name Match",
+          "basePath": "/v1",
+          "endpoint": "/composite-validation",
+          "method": "POST",
+          "category": "imps",
+          "requestDtoType": "composite.model.request.IMPSNameMatchRequestDto",
+          "responseDtoType": "composite.model.response.IMPSNameMatchResponseDto",
+          "function" : "imps_name_match"
+        },
+        {
+          "isSubscribed": true,
+          "apiId": "2010",
+          "apiName": "IMPS Name Inquiry",
+          "basePath": "/v1",
+          "endpoint": "/composite-validation",
+          "method": "POST",
+          "category": "imps",
+          "requestDtoType": "composite.model.request.IMPSNameInquiryRequestDto",
+          "responseDtoType": "composite.model.response.IMPSNameInquiryResponseDTO",
+          "function" : "imps_name_inquiry"
+        },
+        {
+          "apiId": "2011",
+          "apiName": "NEFTPayment",
+          "basePath": "/v1",
+          "endpoint": "/composite-payment",
+          "method": "POST",
+          "category": "neft",
+          "requestDtoType": "composite.model.request.NEFTPaymentRequestDTO",
+          "responseDtoType": "composite.model.response.NEFTPaymentResponseDTO",
+          "function" : "neft_payment"
+        },
+        {
+          "apiId": "2012",
+          "apiName": "NEFT Payment with Bene Id",
+          "basePath": "/v2",
+          "endpoint": "/composite-payment",
+          "method": "POST",
+          "category": "neft",
+          "requestDtoType": "composite.model.request.NEFTTransactionBnfIDRequestDTO",
+          "responseDtoType": "composite.model.response.NEFTTransactionBnfIDResponseDTO",
+          "function" : "neft_paymentwith_bene_id"
+        },
+        {
+          "apiId": "2013",
+          "apiName": "NEFTDebitStatus",
+          "basePath": "/v1",
+          "endpoint": "/composite-status",
+          "method": "POST",
+          "category": "neft",
+          "requestDtoType": "composite.model.request.NEFTDebatStatusRequestDTO",
+          "responseDtoType": "composite.model.response.NEFTDebatStatusResponseDTO",
+          "function" : "neft_debit_status"
+        },
+        {
+          "apiId": "2014",
+          "apiName": "FundTransfer",
+          "basePath": "/v1",
+          "endpoint": "/composite-payment",
+          "method": "POST",
+          "category": "neft",
+          "requestDtoType": "composite.model.request.FundTransferRequestDTO",
+          "responseDtoType": "composite.model.response.FundTransferResponseDTO",
+          "function" : "fund_transfer"
+        },
+        {
+          "apiId": "2015",
+          "apiName": "RTGSTransaction",
+          "basePath": "/v1",
+          "endpoint": "/composite-payment",
+          "method": "POST",
+          "category": "rtgs",
+          "requestDtoType": "composite.model.request.RTGSTransactionRequestDTO",
+          "responseDtoType": "composite.model.response.RTGSTransactionResponseDTO",
+          "function" : "rtgs_transaction"
+        },
+        {
+          "apiId": "2016",
+          "apiName": "RTGSTransaction with BnfID",
+          "basePath": "/v2",
+          "endpoint": "/composite-payment",
+          "method": "POST",
+          "category": "rtgs",
+          "requestDtoType": "composite.model.request.RTGSTransactionBnfIDRequestDTO",
+          "responseDtoType": "composite.model.response.RTGSTransactionBnfIDResponseDTO",
+          "function" : "rtgs_transactionwith_bnf_id"
+        },
+        {
+          "apiId": "2017",
+          "apiName": "RTGSDebitStatus",
+          "basePath": "/v1",
+          "endpoint": "/composite-status",
+          "method": "POST",
+          "category": "rtgs",
+          "requestDtoType": "composite.model.request.RTGSDebitStatusRequestDTO",
+          "responseDtoType": "composite.model.response.RTGSDebitStatusResponseDTO",
+          "function" : "rtgs_debit_status"
+        },
+        {
+          "apiId": "2018",
+          "apiName": "RTGSFundTransfer",
+          "basePath": "/v1",
+          "endpoint": "/composite-payment",
+          "method": "POST",
+          "category": "rtgs",
+          "requestDtoType": "composite.model.request.RTGSFundTransferRequestDTO",
+          "responseDtoType": "composite.model.response.RTGSFundTransferResponseDTO",
+          "function" : "rtgs_fund_transfer"
+        },
+        {
+          "apiId": "2019",
+          "apiName": "Merchant Registration - 1003",
+          "basePath": "/Corporate/CIB/v1",
+          "endpoint": "/Registration",
+          "method": "POST",
+          "category": "cib",
+          "requestDtoType": "composite.model.request.CIBRegistrationRequestDTO",
+          "responseDtoType": "composite.model.response.CIBRegistrationResponseDTO",
+          "function" : "merchant_registration_1003"
+        },
+        {
+          "apiId": "2020",
+          "apiName": "Bene Addition IFSC - 1005",
+          "basePath": "/Corporate/CIB/v1",
+          "endpoint": "/BeneAddition",
+          "method": "POST",
+          "category": "cib",
+          "requestDtoType": "composite.model.request.BeneAdditionIFSCRequestDTO",
+          "responseDtoType": "composite.model.response.BeneAdditionIFSCResponseDTO",
+          "function" : "bene_addition_ifsc_1005"
+        },
+        {
+          "apiId": "2021",
+          "apiName": "BeneAdditionVPA - 1007",
+          "basePath": "/Corporate/CIB/VPA/v1",
+          "endpoint": "/BeneAddition",
+          "method": "POST",
+          "category": "cib",
+          "requestDtoType": "composite.model.request.BeneAdditionVPARequestDTO",
+          "responseDtoType": "composite.model.response.BeneAdditionVPAResponseDTO",
+          "function" : "bene_addition_vpa_1007"
+        },
+        {
+          "apiId": "2022",
+          "apiName": "NEFTStatus - 1016",
+          "basePath": "/v1",
+          "endpoint": "/CIBNEFTStatus",
+          "method": "POST",
+          "category": "cib",
+          "requestDtoType": "composite.model.request.NEFTStatusRequestDTO",
+          "responseDtoType": "composite.model.response.NEFTStatusResponseDTO",
+          "function" : "neft_status_1016"
+        }
+      ]
+    },
+    {
+      "isSubscribed":true,
+      "name": "cibbulk",
+      "description": "CIB-BULK Product API Configuration",
+      "headers": {
+        "Content-Type": "application/json",
+        "X-SDK-Originated": "true",
+        "X-SDK-VERSION": "1.0.0"
+      },
+      "apis": [
+        {
+          "apiId": "4001",
+          "apiName": "bulkPayment",
+          "basePath": "/v1/cibbulkpayment",
+          "endpoint": "/bulkPayment",
+          "method": "POST",
+          "requestDtoType": "cibbulk.model.CibBulkPaymentRequestDTO",
+          "responseDtoType": "",
+          "function": "bulk_payment"
+        },
+        {
+          "apiId": "4002",
+          "apiName": "Create OTP",
+          "basePath": "/Corporate/CIB/v1",
+          "endpoint": "/Create",
+          "method": "POST",
+          "requestDtoType": "cibulk.model.OtpCreateDTO",
+          "responseDtoType": "",
+          "function" : "create_otp"
+        },
+        {
+          "apiId": "4003",
+          "apiName": "ReverseMis",
+          "basePath": "/v1",
+          "endpoint": "/ReverseMis",
+          "method": "POST",
+          "requestDtoType": "cibbulk.model.ReverseMisRequestDTO",
+          "responseDtoType": "" ,
+          "function": "reverse_mis"
+        }
+  ]}]
+}

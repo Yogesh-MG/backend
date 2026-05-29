@@ -1,0 +1,10 @@
+
+include README.md
+include sdk-builder-config.json
+include httpcore/resources/corporate_server_publickey.pem
+include httpcore/resources/composite_server_publickey.pem
+include httpcore/resources/eazypay_server_publickey.pem
+include httpcore/resources/cibbulk_server_publickey.pem
+
+exclude **/env.template
+exclude **/setup.py

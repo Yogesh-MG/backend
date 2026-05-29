@@ -22,4 +22,4 @@ pywebpush>=1.14
 firebase-admin>=6.0
 
 # ICICI Eazypay SDK
-eazypay @ file:///c:/dev/Freshon.in/pythhon_eazypay_v1_new/src/eazypay-1.0
+-e ./libs/eazypay
