@@ -24,12 +24,17 @@ class PosProductSerializer(serializers.Serializer):
 
 class PosCustomerSerializer(serializers.ModelSerializer):
     """POS walk-in customer."""
-    pride = serializers.BooleanField(source='is_pride', read_only=True)
+    pride = serializers.SerializerMethodField()
     wallet_balance = serializers.SerializerMethodField()
 
     class Meta:
         model = PosCustomer
         fields = ['id', 'name', 'phone', 'email', 'tier', 'points', 'pride', 'wallet_balance']
+
+    def get_pride(self, obj):
+        if obj.user and hasattr(obj.user, 'partnership'):
+            return not obj.user.partnership.refund_requested
+        return obj.is_pride
 
     def get_wallet_balance(self, obj):
         if obj.user and hasattr(obj.user, 'wallet'):

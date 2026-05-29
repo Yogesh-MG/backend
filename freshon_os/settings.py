@@ -257,3 +257,21 @@ WEBPUSH_VAPID_ADMIN_EMAIL = config("WEBPUSH_VAPID_ADMIN_EMAIL", default="admin@f
 
 FIREBASE_CREDENTIALS_PATH = config("FIREBASE_CREDENTIALS_PATH", default="")
 FIREBASE_CREDENTIALS_JSON = config("FIREBASE_CREDENTIALS_JSON", default="")  # For Docker/containers
+
+# ─── Petpooja Payroll Configuration ──────────────────────────────────────
+
+PETPOOJA_BASE_URL = config("PETPOOJA_BASE_URL", default="https://api.petpooja.com/v1")
+PETPOOJA_CLIENT_ID = config("PETPOOJA_CLIENT_ID", default="")
+PETPOOJA_CLIENT_SECRET = config("PETPOOJA_CLIENT_SECRET", default="")
+
+# ─── ICICI Eazypay Configuration ─────────────────────────────────────────
+
+ICICI_ENABLED = config("ICICI_ENABLED", default=False, cast=bool)
+ICICI_ENV_TYPE = config("ICICI_ENV_TYPE", default="UAT")  # "UAT" or "PROD"
+ICICI_MERCHANT_ID = config("ICICI_MERCHANT_ID", default="")
+ICICI_TERMINAL_ID = config("ICICI_TERMINAL_ID", default="")
+ICICI_SUB_MERCHANT_ID = config("ICICI_SUB_MERCHANT_ID", default="")
+ICICI_API_KEY = config("ICICI_API_KEY", default="")  # EAZYPAY_API_KEY
+ICICI_KEYSTORE_PATH = config("ICICI_KEYSTORE_PATH", default="")  # Path to ClientPrivateKey.p12
+ICICI_KEYSTORE_PASSWORD = config("ICICI_KEYSTORE_PASSWORD", default="")
+ICICI_KEYSTORE_ALIAS = config("ICICI_KEYSTORE_ALIAS", default="ICICI")

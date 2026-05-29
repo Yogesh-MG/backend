@@ -395,7 +395,14 @@ class PosOrderCreateView(APIView):
         # ── PRIDE Limit Validation ──
         # If customer is a PRIDE member, validate member_discount against their limit
         pride_limit_used = Decimal('0.00')
-        if customer and customer.user and customer.is_pride:
+        is_pride_member = False
+        if customer:
+            if customer.user and hasattr(customer.user, 'partnership'):
+                is_pride_member = not customer.user.partnership.refund_requested
+            else:
+                is_pride_member = customer.is_pride
+                
+        if is_pride_member and customer.user:
             try:
                 wallet = Wallet.objects.select_for_update().get(user=customer.user)
                 gross_subtotal = sum(

@@ -6,7 +6,10 @@ Run on the 1st of every month (via cron or celery beat):
 
 Adds the tier-based monthly PRIDE discount limit to each PRIDE member's wallet.
 Does NOT reset the limit — it accumulates carry-forward.
-Also credits the monthly wallet balance credit (10% of invested amount).
+
+Note: Monthly wallet credit (10% of purchase) is now credited at order time,
+not monthly. This ensures users only get credit for actual purchases within
+their tier limit.
 """
 from decimal import Decimal
 from django.core.management.base import BaseCommand
@@ -35,7 +38,8 @@ class Command(BaseCommand):
                 continue
 
             with transaction.atomic():
-                # ── 1. Credit PRIDE discount limit ──
+                # ── Credit PRIDE discount limit ──
+                # This limit is used for BOTH discount eligibility AND wallet credit eligibility
                 tier_limits = {
                     'TIER_1': Decimal('3000.00'),
                     'TIER_2': Decimal('6000.00'),
@@ -46,25 +50,14 @@ class Command(BaseCommand):
                     wallet.accumulated_pride_limit += monthly_limit
                     limit_count += 1
 
-                # ── 2. Credit wallet balance (monthly percentage) ──
-                monthly_credit = (partnership.invested_amount * partnership.monthly_credit_percentage) / Decimal('100.00')
-                if monthly_credit > 0:
-                    balance_before = wallet.balance
-                    wallet.balance += monthly_credit
-                    wallet_count += 1
-
-                    WalletTransaction.objects.create(
-                        wallet=wallet,
-                        amount=monthly_credit,
-                        reason='MONTHLY_CREDIT',
-                        balance_before=balance_before,
-                        balance_after=wallet.balance,
-                        notes=f"Monthly credit ({partnership.monthly_credit_percentage}%) for {partnership.tier}"
-                    )
+                # Note: Monthly wallet credit (10% of purchase) is now credited at order time
+                # in the order serializer, not here. This ensures users only get credit for
+                # actual purchases within their tier limit.
 
                 wallet.last_monthly_credit_date = now
-                wallet.save(update_fields=['accumulated_pride_limit', 'balance', 'last_monthly_credit_date'])
+                wallet.save(update_fields=['accumulated_pride_limit', 'last_monthly_credit_date'])
 
         self.stdout.write(self.style.SUCCESS(
-            f"Credited {limit_count} PRIDE limits and {wallet_count} wallet balances for {now.strftime('%B %Y')}"
+            f"Credited {limit_count} PRIDE limits for {now.strftime('%B %Y')}. "
+            f"Wallet credits (10% of purchase) are applied at order time."
         ))

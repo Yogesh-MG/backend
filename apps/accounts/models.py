@@ -157,3 +157,64 @@ class CustomerSettings(models.Model):
 
     def __str__(self):
         return f"Settings for {self.user.username}"
+
+
+class Employee(models.Model):
+    """
+    Employee profile linking Freshon users to Petpooja Payroll.
+    This keeps the core User model clean while handling Petpooja's emp_id mapping.
+    """
+    class Department(models.TextChoices):
+        PICKER = "PICKER", "Picker"
+        DELIVERY = "DELIVERY", "Delivery Partner"
+        POS = "POS", "POS Operator"
+        ADMIN = "ADMIN", "Admin"
+        OTHER = "OTHER", "Other"
+
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='employee_profile')
+    emp_id = models.CharField(max_length=50, unique=True, help_text="Petpooja Employee ID")
+    department = models.CharField(max_length=20, choices=Department.choices, default=Department.OTHER)
+    is_active = models.BooleanField(default=True, help_text="Whether this employee is currently active")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['emp_id']),
+            models.Index(fields=['department', 'is_active']),
+        ]
+
+    def __str__(self):
+        return f"{self.user.get_full_name() or self.user.username} ({self.emp_id})"
+
+
+class AttendancePunch(models.Model):
+    """
+    Raw attendance punch data fetched from Petpooja Payroll API.
+    Stores punch-in and punch-out times for tracking and auditing.
+    """
+    class Operation(models.TextChoices):
+        IN = "In", "In"
+        OUT = "Out", "Out"
+
+    employee = models.ForeignKey(Employee, on_delete=models.CASCADE, related_name='punches')
+    payroll_date = models.DateField(help_text="The date for which this punch is recorded")
+    punch_time = models.DateTimeField(help_text="Actual punch timestamp")
+    operation = models.CharField(max_length=10, choices=Operation.choices, help_text="In or Out punch")
+    # Store raw data from Petpooja for reference
+    raw_data = models.JSONField(default=dict, blank=True, help_text="Raw API response data")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-punch_time']
+        unique_together = ['employee', 'punch_time', 'operation']
+        indexes = [
+            models.Index(fields=['employee', 'payroll_date']),
+            models.Index(fields=['payroll_date']),
+            models.Index(fields=['punch_time']),
+        ]
+
+    def __str__(self):
+        return f"{self.employee.emp_id} - {self.operation} at {self.punch_time}"

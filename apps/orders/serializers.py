@@ -88,10 +88,15 @@ class OrderListSerializer(serializers.ModelSerializer):
 class OrderCreateSerializer(serializers.ModelSerializer):
     items = OrderItemSerializer(many=True)
     organic_impact = serializers.SerializerMethodField(read_only=True)
-    # Razorpay payment details (write-only, for creating PaymentTransaction)
+    # Payment details (write-only, for creating PaymentTransaction)
+    # Legacy Razorpay fields
     razorpay_payment_id = serializers.CharField(write_only=True, required=False, allow_blank=True)
     razorpay_order_id = serializers.CharField(write_only=True, required=False, allow_blank=True)
     razorpay_signature = serializers.CharField(write_only=True, required=False, allow_blank=True)
+    # ICICI Eazypay fields
+    icici_merchant_tran_id = serializers.CharField(write_only=True, required=False, allow_blank=True)
+    icici_ref_id = serializers.CharField(write_only=True, required=False, allow_blank=True)
+    icici_bank_rrn = serializers.CharField(write_only=True, required=False, allow_blank=True)
 
     class Meta:
         model = Order
@@ -99,7 +104,8 @@ class OrderCreateSerializer(serializers.ModelSerializer):
             'id', 'tracking_id', 'address_title', 'address_line', 'delivery_slot', 
             'payment_method', 'items', 'subtotal', 'delivery_fee', 'total', 'is_paid',
             'wallet_amount_used', 'remaining_amount', 'organic_impact',
-            'razorpay_payment_id', 'razorpay_order_id', 'razorpay_signature'
+            'razorpay_payment_id', 'razorpay_order_id', 'razorpay_signature',
+            'icici_merchant_tran_id', 'icici_ref_id', 'icici_bank_rrn'
         ]
         read_only_fields = ['id', 'tracking_id', 'subtotal', 'delivery_fee', 'total']
 
@@ -118,10 +124,13 @@ class OrderCreateSerializer(serializers.ModelSerializer):
         remaining_amount_passed = validated_data.pop('remaining_amount', Decimal('0.00'))
         validated_data.pop('member_discount', None)
         validated_data.pop('pride_limit_used', None)
-        # Extract Razorpay payment details
+        # Extract payment details
         razorpay_payment_id = validated_data.pop('razorpay_payment_id', None)
         razorpay_order_id = validated_data.pop('razorpay_order_id', None)
         razorpay_signature = validated_data.pop('razorpay_signature', None)
+        icici_merchant_tran_id = validated_data.pop('icici_merchant_tran_id', None)
+        icici_ref_id = validated_data.pop('icici_ref_id', None)
+        icici_bank_rrn = validated_data.pop('icici_bank_rrn', None)
         user = validated_data.pop('user', self.context['request'].user)
         delivery_slot_type = validated_data.get('delivery_slot', 'EXPRESS')
 
@@ -214,21 +223,33 @@ class OrderCreateSerializer(serializers.ModelSerializer):
                     delivery_fee = Decimal('25.00') if subtotal < free_delivery_threshold else Decimal('0.00')
 
 
-            # 3. Apply PRIDE discount limit (if user has PRIDE partnership)
-            from apps.wallet.models import Wallet
+            # 3. Apply PRIDE discount limit and credit 10% wallet (if user has PRIDE partnership)
+            from apps.wallet.models import Wallet, WalletTransaction
             member_discount = Decimal('0.00')
             pride_limit_used = Decimal('0.00')
+            monthly_wallet_credit = Decimal('0.00')
+            wallet_credit_balance_before = Decimal('0.00')
+            wallet_credit_balance_after = Decimal('0.00')
+            wallet_for_credit = None
+            
             try:
-                wallet = Wallet.objects.select_for_update().get(user=user)
+                wallet_for_credit = Wallet.objects.select_for_update().get(user=user)
                 has_partnership = hasattr(user, 'partnership') and user.partnership and not user.partnership.refund_requested
-                if has_partnership and wallet.accumulated_pride_limit > 0:
-                    # How much MRP can be discounted?
-                    discountable_mrp = min(subtotal, wallet.accumulated_pride_limit)
+                if has_partnership and wallet_for_credit.accumulated_pride_limit > 0:
+                    # How much MRP can be discounted and get wallet credit?
+                    discountable_mrp = min(subtotal, wallet_for_credit.accumulated_pride_limit)
                     member_discount = (discountable_mrp * Decimal('0.30')).quantize(Decimal('0.01'))
                     pride_limit_used = discountable_mrp
+                    
+                    # Credit 10% of the purchase amount (within tier limit) to wallet
+                    monthly_wallet_credit = (discountable_mrp * Decimal('0.10')).quantize(Decimal('0.01'))
+                    wallet_credit_balance_before = wallet_for_credit.balance
+                    wallet_for_credit.balance += monthly_wallet_credit
+                    wallet_credit_balance_after = wallet_for_credit.balance
+                    
                     # Deduct the MRP value that got discounted from the limit
-                    wallet.accumulated_pride_limit -= discountable_mrp
-                    wallet.save(update_fields=['accumulated_pride_limit'])
+                    wallet_for_credit.accumulated_pride_limit -= discountable_mrp
+                    wallet_for_credit.save(update_fields=['accumulated_pride_limit', 'balance'])
             except Wallet.DoesNotExist:
                 pass
 
@@ -291,7 +312,6 @@ class OrderCreateSerializer(serializers.ModelSerializer):
 
             # Link/Create the wallet transaction record directly with the order
             if wallet_to_deduct > 0 and wallet_obj:
-                from apps.wallet.models import WalletTransaction
                 WalletTransaction.objects.create(
                     wallet=wallet_obj,
                     amount=-wallet_to_deduct,
@@ -300,6 +320,18 @@ class OrderCreateSerializer(serializers.ModelSerializer):
                     balance_after=deducted_balance_after,
                     related_order=order,
                     notes=f"Wallet split payment for order {order.tracking_id}"
+                )
+            
+            # Create wallet transaction for monthly credit (10% of purchase within tier limit)
+            if monthly_wallet_credit > 0 and wallet_for_credit:
+                WalletTransaction.objects.create(
+                    wallet=wallet_for_credit,
+                    amount=monthly_wallet_credit,
+                    reason='MONTHLY_CREDIT',
+                    balance_before=wallet_credit_balance_before,
+                    balance_after=wallet_credit_balance_after,
+                    related_order=order,
+                    notes=f"10% credit on ₹{pride_limit_used} purchase (within tier limit)"
                 )
 
             # 6. Create items, deduct stock, and calculate organic impact
@@ -346,10 +378,25 @@ class OrderCreateSerializer(serializers.ModelSerializer):
                 from apps.payment.models import PaymentTransaction
                 PaymentTransaction.objects.create(
                     order=order,
+                    provider='RAZORPAY',
                     razorpay_payment_id=razorpay_payment_id,
                     razorpay_order_id=razorpay_order_id,
                     razorpay_signature=razorpay_signature or '',
                     amount=order.total - wallet_amount_used,  # Amount paid via Razorpay
+                    currency='INR',
+                    status='COMPLETED'
+                )
+            
+            # Create PaymentTransaction for ICICI payments
+            if is_paid and icici_merchant_tran_id:
+                from apps.payment.models import PaymentTransaction
+                PaymentTransaction.objects.create(
+                    order=order,
+                    provider='ICICI',
+                    icici_merchant_tran_id=icici_merchant_tran_id,
+                    icici_ref_id=icici_ref_id or '',
+                    icici_bank_rrn=icici_bank_rrn or '',
+                    amount=order.total - wallet_amount_used,  # Amount paid via ICICI
                     currency='INR',
                     status='COMPLETED'
                 )
